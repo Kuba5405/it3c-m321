@@ -1,7 +1,12 @@
 package ch.benedict.m321.batchwriter;
 
 import ch.benedict.m321.batchwriter.dto.ChatMessage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageDeliveryMode;
+import org.springframework.amqp.core.MessageProperties;
+import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import ch.benedict.m321.batchwriter.config.QueueNames;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -14,8 +19,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.RabbitMQContainer;
+import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.utility.MountableFile;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -64,6 +72,10 @@ public abstract class IntegrationTestBase {
 
     @Autowired
     protected RabbitAdmin rabbitAdmin;
+
+    /** Das Register aller Verbraucher: damit lässt sich der Verbraucher anhalten und starten. */
+    @Autowired
+    protected RabbitListenerEndpointRegistry listenerRegistry;
 
     /**
      * Berechnet den absoluten Pfad der init.sql, damit der Test nicht davon
@@ -134,5 +146,128 @@ public abstract class IntegrationTestBase {
     protected long countRows() {
         Long count = jdbcTemplate.queryForObject("SELECT count(*) FROM message", Long.class);
         return count;
+    }
+
+    /**
+     * Stellt nach jedem Test sicher, dass der Verbraucher wieder läuft, auch
+     * wenn ein Test mittendrin gescheitert ist. Sonst stünde er für alle
+     * folgenden Tests still.
+     */
+    @AfterEach
+    void makeSureTheListenerRuns() {
+        listenerRegistry.start();
+    }
+
+    /**
+     * Hält den Verbraucher an. Nachrichten bleiben dann in der Queue liegen,
+     * genau wie bei einem gestoppten batch-writer (Szenario S4).
+     */
+    protected void stopListener() {
+        listenerRegistry.stop();
+    }
+
+    /**
+     * Startet den Verbraucher wieder.
+     */
+    protected void startListener() {
+        listenerRegistry.start();
+    }
+
+    /**
+     * Baut das JSON genau so, wie der chat-service es schreibt (Spezifikation 2.1),
+     * auch mit den neun Nachkommastellen, die Instant.toString() liefert.
+     */
+    protected String toJson(ChatMessage message) {
+        return String.format(
+                "{\"id\":\"%s\",\"roomId\":\"%s\",\"senderId\":\"%s\","
+                        + "\"senderName\":\"%s\",\"content\":\"%s\",\"sentAt\":\"%s\"}",
+                message.id(), message.roomId(), message.senderId(),
+                message.senderName(), message.content(), message.sentAt());
+    }
+
+    /**
+     * Legt eine Nachricht mit allen Eigenschaften in die Queue, die auch der
+     * echte chat-service setzt, samt dem Header __TypeId__ (gemessen am 01.10.2026).
+     */
+    protected void publishLikeChatService(ChatMessage message) {
+        MessageProperties properties = new MessageProperties();
+        properties.setContentType("application/json");
+        properties.setContentEncoding("UTF-8");
+        properties.setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+        properties.setHeader("__TypeId__", "ch.benedict.m321.chatservice.dto.ChatMessage");
+        String json = toJson(message);
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+
+        rabbitTemplate.send("", QueueNames.PERSIST_QUEUE, new Message(body, properties));
+    }
+
+    /**
+     * Legt einen Körper mit NUR dem Header content_type in die Queue, ohne
+     * __TypeId__. So prüft Szenario S5.
+     */
+    protected void publishWithOnlyContentType(String json) {
+        MessageProperties properties = new MessageProperties();
+        properties.setContentType("application/json");
+        byte[] body = json.getBytes(StandardCharsets.UTF_8);
+
+        rabbitTemplate.send("", QueueNames.PERSIST_QUEUE, new Message(body, properties));
+    }
+
+    /**
+     * Wartet höchstens 10 Sekunden, bis die Tabelle so viele Zeilen hat.
+     * Gibt danach einfach zurück: ob es gereicht hat, prüft der Test selbst
+     * mit einer Zusicherung, die einen verständlichen Fehler zeigt.
+     */
+    protected void waitForRows(long expectedRows) throws InterruptedException {
+        for (int attempt = 0; attempt < 200; attempt++) {
+            long rows = countRows();
+            if (rows >= expectedRows) {
+                return;
+            }
+            Thread.sleep(50);
+        }
+    }
+
+    /**
+     * Wartet höchstens 10 Sekunden, bis eine Queue genau so viele Nachrichten
+     * enthält. Bei Gleichheit oder Ablauf der Zeit geht es weiter.
+     */
+    protected void waitForQueueCount(String queueName, int expectedCount) throws Exception {
+        for (int attempt = 0; attempt < 50; attempt++) {
+            int count = queueMessageCount(queueName);
+            if (count == expectedCount) {
+                return;
+            }
+            Thread.sleep(200);
+        }
+    }
+
+    /**
+     * Fragt RabbitMQ, wie viele Nachrichten eine Queue enthält, bereite UND
+     * noch nicht bestätigte. Gelesen mit rabbitmqctl, so wie es auch ein
+     * Mensch nachprüfen würde. Eine Queue, die es nicht gibt, hat 0.
+     */
+    protected int queueMessageCount(String queueName) throws IOException, InterruptedException {
+        ExecResult result = RABBIT.execInContainer("rabbitmqctl", "list_queues", "name", "messages");
+        String output = result.getStdout();
+        String[] lines = output.split("\n");
+
+        for (int i = 0; i < lines.length; i++) {
+            String[] columns = lines[i].trim().split("\\s+");
+            if (columns.length == 2 && columns[0].equals(queueName)) {
+                return Integer.parseInt(columns[1]);
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * Gibt die aktuelle Transaktionsnummer der Datenbank zurück. Der Aufruf
+     * verbraucht selbst eine. Der Unterschied zweier Aufrufe, minus 1, ist die
+     * Zahl der Schreib-Transaktionen dazwischen.
+     */
+    protected long currentTransactionNumber() {
+        Long number = jdbcTemplate.queryForObject("SELECT txid_current()", Long.class);
+        return number;
     }
 }
