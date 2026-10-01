@@ -28,4 +28,26 @@
     <modules>
         <module>chat-service</module>
     </modules>
+
+    <build>
+        <plugins>
+            <!-- Ab JDK 23 führt javac Annotation-Prozessoren nicht mehr von selbst
+                 aus. Ohne diese Zeilen läuft Lombok dort nicht, und der Build bricht
+                 mit "cannot find symbol: log" ab. Mit dem ausdrücklichen Pfad
+                 funktioniert derselbe Build auf jedem JDK. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>${lombok.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
