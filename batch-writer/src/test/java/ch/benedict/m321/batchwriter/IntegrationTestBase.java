@@ -2,6 +2,9 @@ package ch.benedict.m321.batchwriter;
 
 import ch.benedict.m321.batchwriter.dto.ChatMessage;
 import org.junit.jupiter.api.BeforeEach;
+import ch.benedict.m321.batchwriter.config.QueueNames;
+import org.springframework.amqp.rabbit.core.RabbitAdmin;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.util.TestPropertyValues;
@@ -56,6 +59,12 @@ public abstract class IntegrationTestBase {
     @Autowired
     protected JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    protected RabbitTemplate rabbitTemplate;
+
+    @Autowired
+    protected RabbitAdmin rabbitAdmin;
+
     /**
      * Berechnet den absoluten Pfad der init.sql, damit der Test nicht davon
      * abhängt, von wo aus er gestartet wird.
@@ -95,12 +104,15 @@ public abstract class IntegrationTestBase {
     }
 
     /**
-     * Beginnt jeden Test mit leerer Tabelle. Sonst sähe ein Test die Zeilen
-     * des vorherigen und schlüge scheinbar grundlos fehl.
+     * Beginnt jeden Test mit leerer Tabelle und leeren Queues. Sonst sähe ein
+     * Test die Zeilen und Nachrichten des vorherigen und schlüge scheinbar
+     * grundlos fehl.
      */
     @BeforeEach
-    void emptyMessageTable() {
+    void emptyTableAndQueues() {
         jdbcTemplate.execute("TRUNCATE TABLE message");
+        rabbitAdmin.purgeQueue(QueueNames.PERSIST_QUEUE);
+        rabbitAdmin.purgeQueue(QueueNames.DEAD_LETTER_QUEUE);
     }
 
     /**
