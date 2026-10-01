@@ -15,6 +15,19 @@ spring:
     hikari:
       # Höchstens 5 s auf eine Verbindung aus dem Pool warten, dann Fehler.
       connection-timeout: 5000
+  rabbitmq:
+    # Im Docker-Netz heisst der Broker "rabbitmq". Ausserhalb von Docker
+    # greift der Vorgabewert "localhost".
+    host: ${RABBITMQ_HOST:localhost}
+    port: 5672
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+
+batch-writer:
+  # Ein Stapel ist fertig, wenn er so viele Nachrichten hat ...
+  batch-size: ${BATCH_SIZE:500}
+  # ... oder wenn so viele Millisekunden vergangen sind. Was zuerst eintritt.
+  batch-timeout-ms: ${BATCH_TIMEOUT_MS:200}
 
 logging:
   level:

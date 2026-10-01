@@ -10,6 +10,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
 import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.containers.RabbitMQContainer;
 import org.testcontainers.utility.MountableFile;
 
 import java.nio.file.Path;
@@ -20,12 +21,12 @@ import java.util.UUID;
 /**
  * Gemeinsame Grundlage aller Tests, die den ganzen Dienst brauchen.
  *
- * Der Datenbank-Container wird EINMAL gestartet und von allen Testklassen
+ * Datenbank und Broker werden EINMAL gestartet und von allen Testklassen
  * benutzt. Das spart pro Klasse einige Sekunden. Weil alle Klassen dieselbe
  * Konfiguration haben, teilen sie sich auch denselben Spring-Kontext.
  *
- * Der Preis: eine Datenbank ist gemeinsamer Zustand. Darum leert jeder
- * Test vorher die Tabelle.
+ * Der Preis: Datenbank und Queues sind gemeinsamer Zustand. Darum leert jeder
+ * Test vorher die Tabelle und die Queues.
  */
 @SpringBootTest
 @ContextConfiguration(initializers = IntegrationTestBase.ContainerPropertiesInitializer.class)
@@ -41,8 +42,15 @@ public abstract class IntegrationTestBase {
                     MountableFile.forHostPath(initScriptPath()),
                     "/docker-entrypoint-initdb.d/init.sql");
 
+    /**
+     * Der Broker, mit Management-Plugin, damit der Test mit rabbitmqctl
+     * nachsehen kann, was wirklich in den Queues liegt.
+     */
+    protected static final RabbitMQContainer RABBIT = new RabbitMQContainer("rabbitmq:3.13-management");
+
     static {
         POSTGRES.start();
+        RABBIT.start();
     }
 
     @Autowired
@@ -69,15 +77,19 @@ public abstract class IntegrationTestBase {
     static class ContainerPropertiesInitializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
 
         /**
-         * Setzt die Verbindungsdaten, bevor der Kontext gebaut wird. Sie
-         * haben Vorrang vor den Platzhaltern in application.yml.
+         * Setzt die Verbindungsdaten beider Container, bevor der Kontext
+         * gebaut wird. Sie haben Vorrang vor application.yml.
          */
         @Override
         public void initialize(ConfigurableApplicationContext context) {
             TestPropertyValues values = TestPropertyValues.of(
                     "spring.datasource.url=" + POSTGRES.getJdbcUrl(),
                     "spring.datasource.username=" + POSTGRES.getUsername(),
-                    "spring.datasource.password=" + POSTGRES.getPassword());
+                    "spring.datasource.password=" + POSTGRES.getPassword(),
+                    "spring.rabbitmq.host=" + RABBIT.getHost(),
+                    "spring.rabbitmq.port=" + RABBIT.getAmqpPort(),
+                    "spring.rabbitmq.username=" + RABBIT.getAdminUsername(),
+                    "spring.rabbitmq.password=" + RABBIT.getAdminPassword());
             values.applyTo(context);
         }
     }
