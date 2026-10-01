@@ -21,11 +21,25 @@
             <artifactId>spring-boot-starter-json</artifactId>
         </dependency>
 
+        <!-- JdbcTemplate, Verbindungspool und Transaktionen -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+        </dependency>
+
         <!-- Treiber, mit dem Java mit PostgreSQL spricht -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
+        </dependency>
+
+        <!-- Lombok erzeugt Logger und Konstruktoren beim Uebersetzen.
+             "optional" heisst: nur wir brauchen es, niemand der uns benutzt. -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
         </dependency>
 
         <dependency>

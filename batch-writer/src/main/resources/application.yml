@@ -1,0 +1,22 @@
+spring:
+  application:
+    name: batch-writer
+  datasource:
+    # Im Docker-Netz heisst die Datenbank "postgres". Ausserhalb von Docker
+    # greift der Vorgabewert "localhost".
+    # Datenbankname, Benutzer und Passwort haben absichtlich KEINEN Vorgabewert:
+    # ein heimlicher Ersatz wäre ein Passwort im Quelltext.
+    # connectTimeout: höchstens 5 s für den Verbindungsaufbau.
+    # socketTimeout: höchstens 30 s auf eine Antwort. Ohne diese Grenzen würde
+    # ein eingefrorener Datenbankserver den Dienst ohne Fehlermeldung festhalten.
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB}?connectTimeout=5&socketTimeout=30
+    username: ${POSTGRES_USER}
+    password: ${POSTGRES_PASSWORD}
+    hikari:
+      # Höchstens 5 s auf eine Verbindung aus dem Pool warten, dann Fehler.
+      connection-timeout: 5000
+
+logging:
+  level:
+    # Im Unterricht wollen wir jeden Schritt sehen.
+    ch.benedict.m321: DEBUG
