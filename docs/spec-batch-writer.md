@@ -289,7 +289,7 @@ Variablen aus `.env` gesetzt sind.
 | **S7** | Postgres steht still | `docker compose stop postgres`, 300 Nachrichten senden, 15 s warten, `docker compose start postgres`. Dann wie bei S3 zählen. Dazu `docker compose ps batch-writer` | Nach höchstens 90 s sind alle 300 in der Tabelle. Der `batch-writer` läuft mit unveränderter Startzeit (`docker inspect -f '{{.State.StartedAt}}'`), also kein Neustart von Hand |
 | **S8** | Quelltext von `batch-writer/` hält die Regeln aus `CLAUDE.md` | `scripts/check-code-rules.sh` | Keine Streams (aus Vorsicht auch keine Lambdas) in `batch-writer/`. Über jeder Klasse und jeder Methode steht ein Kommentar. `git ls-files` listet keine `.env` |
 
-Dazu ein Test pro Eigenschaft, die der Abschnitt 3 behauptet (Plan: Aufgaben 4 bis 8):
+Dazu ein Test pro Eigenschaft, die der Abschnitt 3 behauptet (Plan: Aufgaben 2 bis 8):
 Duplikat (S5), Datenbankausfall (S7), Stapel mit wenigen Transaktionen (S4), ungültige
 Nachricht, korrektes Lesen des echten `chat-service`-Formats.
 
