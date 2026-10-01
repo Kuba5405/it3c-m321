@@ -24,12 +24,41 @@ Alle Aufgaben werden in **deinem Fork** gelöst. Das Original-Repository bleibt 
 ## Bauen, testen, starten
 
 ```bash
-mvn test                         # alle Tests, RabbitMQ kommt per Testcontainers
-docker compose up --build        # RabbitMQ und chat-service im Netz chat-net
+mvn clean test                   # alle Tests beider Dienste, in einem Lauf
+docker compose up -d --build     # RabbitMQ, PostgreSQL, chat-service und batch-writer im Netz chat-net
 ```
 
-Der `chat-service` veröffentlicht bewusst **keinen Port** auf den Host. Der einzige offene Port
-des Gesamtsystems gehört später dem Gateway.
+Für `mvn test` muss **Docker laufen**: RabbitMQ und PostgreSQL starten dabei per Testcontainers
+als echte Container. Kein Dienst veröffentlicht einen **Port** auf den Host. Der einzige offene
+Port des Gesamtsystems gehört später dem Gateway.
+
+### Eine Nachricht von Hand durch das System schicken
+
+Weil kein Port offen ist, schickt ein kurzlebiger Container die Nachricht von innen:
+
+```bash
+docker run --rm --network chat-net curlimages/curl -s -X POST http://chat-service:8080/messages \
+  -H 'Content-Type: application/json' \
+  -d '{"roomId":"3f2b1c4e-0000-0000-0000-000000000001","senderId":"anna","senderName":"Anna Muster","content":"Hallo"}'
+```
+
+Und nachsehen, ob sie in der Datenbank angekommen ist (die Werte stehen in deiner `.env`):
+
+```bash
+docker compose exec postgres psql -U chat -d chat -c "SELECT sent_at, sender_name, content FROM message ORDER BY sent_at DESC LIMIT 5"
+```
+
+Die Tabelle `message` legt `postgres/init.sql` an, und zwar **einmal**, beim ersten Start mit
+leerem Datenträger. Wer sie ändert, braucht `docker compose down -v`.
+
+### Prüfen, ob der batch-writer tut, was er soll
+
+```bash
+scripts/verify-batch-writer.sh   # Szenarien S2 bis S7 auf einem frischen Stack (dauert einige Minuten)
+scripts/check-code-rules.sh      # Szenario S8: Regeln aus CLAUDE.md im Quelltext
+```
+
+Das erste Skript löscht den Stack samt Datenträger und baut ihn neu auf. Es lässt ihn am Ende laufen.
 
 ## Was gebaut wird
 
@@ -37,8 +66,8 @@ des Gesamtsystems gehört später dem Gateway.
 |---|---|---|---|
 | chat-service | Spring Boot 3, Java 21 | Nimmt Nachrichten per `POST /messages` an, legt sie auf Queue und Fanout-Exchange | vorhanden |
 | rabbitmq | RabbitMQ 3.13 | Message Queue zwischen den Services | vorhanden |
-| batch-writer | Spring Boot 3, Java 21 | Einziger Schreiber in die Datenbank | folgt |
-| postgres | PostgreSQL | Speichert den Chat-Verlauf | folgt |
+| batch-writer | Spring Boot 3, Java 21 | Holt Nachrichten aus `chat.persist` und schreibt sie stapelweise (500 oder 200 ms) in PostgreSQL. Einziger Schreiber | vorhanden |
+| postgres | PostgreSQL 16 | Speichert den Chat-Verlauf, Tabelle `message` | vorhanden |
 | keycloak | Keycloak | Login (OIDC) | folgt |
 | web-gateway | nginx | Einziger nach aussen offener Port | folgt |
 | Web-UI | React | Browser-Client | folgt |
@@ -54,6 +83,11 @@ erreichbar.
   — grafische Fassung der Planung, lokal im Browser öffnen.
 - [`docs/plan-chat-service.md`](docs/plan-chat-service.md) — Schritt-für-Schritt-Plan, nach dem
   der `chat-service` gebaut wurde. Jeder Schritt mit Test.
+- [`docs/spec-batch-writer.md`](docs/spec-batch-writer.md) — Spezifikation des `batch-writer`:
+  Vertrag, Verhalten in jedem Fehlerfall, Datenmodell, Entscheidungen, Abnahmekriterien und die
+  gemessenen Randfälle.
+- [`docs/plan-batch-writer.md`](docs/plan-batch-writer.md) — Umsetzungsplan des `batch-writer`, in
+  der Reihenfolge, in der er gebaut wurde (siehe `git log`).
 - [`CLAUDE.md`](CLAUDE.md) — Codestil-Regeln für dieses Projekt. Gelten auch für dich.
 - [`docs/flipchart-chat-app.png`](docs/flipchart-chat-app.png) — das Flipchart aus der Lektion,
   von dem die Planung ausgeht.
