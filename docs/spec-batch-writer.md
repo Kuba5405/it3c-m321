@@ -121,7 +121,10 @@ bestimmen:
 1. Der Dienst **deklariert** `chat.persist` und `chat.dlq`, beide durable, `chat.persist`
    mit den Argumenten aus 2.1. Deklarieren ist wiederholbar: gibt es die Queue schon mit
    denselben Argumenten, passiert nichts. Stimmen die Argumente nicht, lehnt der Broker ab
-   und der Dienst startet nicht. Das ist gewollt: ein stiller Unterschied wäre schlimmer.
+   (`PRECONDITION_FAILED`). **Gemessen am 01.10.2026:** der Dienst beendet sich dabei
+   **nicht**. Der Container bleibt `running`, hat aber **0 Verbraucher** und meldet jede
+   Sekunde den Fehler im Log. Das ist ein stiller Zustand und eine bekannte Grenze (siehe 7,
+   Punkt 6). Erkennbar ist er an `rabbitmqctl list_queues name consumers`.
 2. Er hängt **einen** Verbraucher an `chat.persist`. Skaliert wird über Instanzen, nicht
    über Threads (siehe 5, E10).
 3. Im Compose-Stack startet er erst, wenn RabbitMQ und PostgreSQL `healthy` melden.
@@ -141,7 +144,11 @@ Nachricht aus chat.persist ──► Stapel sammeln ──► lesen und prüfen 
    - `id`, `roomId` oder `sentAt` fehlen oder nicht lesbar sind, oder
    - `senderId`, `senderName` oder `content` fehlen oder nur aus Leerzeichen bestehen, oder
    - ein Textfeld das Zeichen `U+0000` enthält. PostgreSQL kann es in `text` nicht speichern
-     und würde den ganzen Stapel ablehnen.
+     und würde den ganzen Stapel ablehnen, oder
+   - `sentAt` vor dem Jahr 1 oder nach dem Jahr 9999 liegt. PostgreSQL lehnt Zeitpunkte nach
+     dem Jahr 294276 ab (der Stapel scheitert, bei jeder Wiederholung erneut, die Queue steht
+     still) und speichert Zeitpunkte weit davor **stillschweigend als `-infinity`**. Beides
+     wurde gemessen (Abschnitt 8, Block C).
 3. **Schreiben.** Alle gültigen Nachrichten des Stapels gehen in **einer Transaktion** in
    die Tabelle, mit `INSERT ... ON CONFLICT (id) DO NOTHING`. Ist die `id` schon da, wird
    die Zeile übersprungen. Es gewinnt die erste.
@@ -178,6 +185,9 @@ gespeichert.
 | **Datenbank kommt zurück** | S7 | Die Verbindungen aus dem Pool sind tot. Der Pool prüft sie beim Ausleihen, ersetzt sie, der nächste Versuch gelingt. Spätestens `RETRY_DELAY_MS` plus Verbindungsaufbau nach dem Neustart steht alles in der Tabelle | Kein Neustart von Hand nötig |
 | **Datenbank antwortet nicht (hängt)** | S7 | Zeitgrenzen beenden den Versuch: 5 s für den Verbindungsaufbau, 30 s für eine Antwort, 5 s Wartezeit auf eine Verbindung aus dem Pool | Ohne Zeitgrenzen würde ein eingefrorener Server den Verbraucher ohne Fehlermeldung ewig festhalten |
 | **Nachricht nicht lesbar** | – | Sie geht mit `x-error-reason` in `chat.dlq`, der Stapel läuft weiter | Eine kaputte Nachricht darf die gesunden nicht aufhalten. Würde sie den Stapel scheitern lassen, käme sie bei jeder Wiederholung wieder und die Queue stünde still |
+| **Zeitpunkt ausserhalb von Jahr 1 bis 9999** | – | Die Nachricht gilt als ungültig und geht mit `x-error-reason` in `chat.dlq`. Die gesunden im selben Stapel werden gespeichert | Sonst scheitert der Stapel für immer (Zukunft) oder die Datenbank speichert `-infinity` (Vergangenheit). Siehe E13 |
+| **Falsche Queue-Argumente** | – | Der Dienst läuft, hat aber keinen Verbraucher, und meldet jede Sekunde `PRECONDITION_FAILED` | Standardverhalten von Spring AMQP, siehe 3.1 und 7, Punkt 6 |
+| **Unsinnige Einstellung** (`BATCH_SIZE` oder `BATCH_TIMEOUT_MS` kleiner als 1, oder keine Zahl) | – | Der Dienst startet nicht und nennt die Variable im Fehler | `BATCH_TIMEOUT_MS=0` hiess: gar nicht warten, im Leerlauf 100 % CPU (gemessen). Besser ein Fehler beim Start |
 | **Schreiber war weg, Queue füllt sich** | S4 | Beim Start liegen N Nachrichten in der Queue. Der Dienst holt sie in Stapeln zu `BATCH_SIZE`: für 1000 Nachrichten 2 Stapel, also 2 Transaktionen. Nichts geht verloren | Die Queue ist der Puffer. Dafür ist sie da, und genau das zeigt S4: Transaktionen steigen mit der Zahl der **Stapel**, nicht der Nachrichten |
 | **Absturz mitten im Stapel** | – | Es wurde noch nicht bestätigt, also liefert der Broker den Stapel erneut | At-least-once |
 | **Absturz nach COMMIT, vor ACK** | – | Der Stapel kommt erneut. Alle Zeilen existieren schon, alle werden übersprungen | Genau dafür gibt es den Primärschlüssel |
@@ -237,6 +247,10 @@ ersten Start mit leerem Datenverzeichnis. Folge: ein geänderter Aufbau verlangt
 `POSTGRES_USER`, `POSTGRES_PASSWORD` und `POSTGRES_DB` haben **keine** Vorgabe im Dienst: ohne
 sie gibt es keine Datenbank, und ein heimlicher Ersatzwert wäre ein Passwort im Quelltext.
 
+`BATCH_SIZE` und `BATCH_TIMEOUT_MS` müssen mindestens 1 sein, sonst startet der Dienst nicht.
+`RETRY_DELAY_MS` wird **nicht** geprüft: ein negativer Wert löst erst beim ersten
+Datenbankfehler eine Ausnahme aus (siehe 7, Punkt 7).
+
 **Wie lange wartet eine Nachricht im Dienst höchstens?** Der Container wartet pro einzelne
 Nachricht ebenfalls höchstens `BATCH_TIMEOUT_MS`. Im ungünstigsten Fall ist das knapp
 `2 × BATCH_TIMEOUT_MS`, also etwa 400 ms plus die Schreibzeit.
@@ -266,6 +280,7 @@ Nachricht ebenfalls höchstens `BATCH_TIMEOUT_MS`. Im ungünstigsten Fall ist da
 | E10 | **Ein Verbraucher pro Instanz** | Mehrere Threads pro Instanz | `rabbitmqctl list_queues ... consumers` zeigt dann die Zahl der Instanzen, und S6 («beide Instanzen hängen an der Queue») ist ablesbar. Mehrere Threads wären ein zweiter Weg zur Skalierung neben `--scale` |
 | E11 | **Queues im Dienst selbst deklarieren** | Auf den `chat-service` warten | Gemessen (2.4): der `chat-service` deklariert erst beim ersten Senden |
 | E12 | **Ungültige Nachrichten selbst in `chat.dlq` veröffentlichen** | Per `basicReject` ablehnen und den Broker weiterleiten lassen | Einzelnes Ablehnen verlangt, dass wir selbst bestätigen und dafür Lieferkennungen verwalten. Der automatische Modus mit «alles oder nichts pro Stapel» ist einfacher zu erklären. Preis: das Veröffentlichen ist nicht bestätigt (siehe 7) |
+| E13 | **Zeitpunkte im Parser auf Jahr 1 bis 9999 begrenzen** | Den Stapel bei einem Datenbankfehler einzeln wiederholen und abgelehnte Zeilen in die Dead-Letter-Queue legen | Das Einzel-Wiederholen fängt nur ab, was die Datenbank ABLEHNT. Das Jahr -999999999 lehnt sie nicht ab, sie speichert `-infinity`. Die Grenze im Parser fängt beides ab, ist in drei Sätzen erklärbar und testbar. Das Einzel-Wiederholen hätte keinen bekannten Auslöser mehr und wäre Code auf Vorrat |
 
 ---
 
@@ -301,8 +316,32 @@ Ehrlich benannt, nicht weggeschwiegen:
 
 | # | Punkt | Folge | Möglicher Weg |
 |---|---|---|---|
-| 1 | **Kaputte Datenzeile, die die Datenbank ablehnt** (nach der Prüfung in 3.2 unwahrscheinlich, aber denkbar) | Der Dienst würde den Stapel endlos wiederholen und die Queue stünde still | Beim Wiederholen die Nachrichten einzeln versuchen und die abgelehnten in die Dead-Letter-Queue legen. Nicht gebaut, weil ohne bekannten Auslöser |
+| 1 | **Eine Zeile, die die Datenbank ablehnt, obwohl die Prüfung in 3.2 sie durchlässt** | Der Dienst würde den Stapel endlos wiederholen und die Queue stünde still. **Zwei Auslöser sind bekannt und gelöst** (`sentAt` in der Zukunft oder weit in der Vergangenheit, siehe E13). Ob es weitere gibt, ist offen | Beim Wiederholen die Nachrichten einzeln versuchen und die abgelehnten in die Dead-Letter-Queue legen. Nicht gebaut, solange kein dritter Auslöser bekannt ist |
 | 2 | **Veröffentlichen in `chat.dlq` ohne Bestätigung** (kein Publisher Confirm) | Stürzt der Broker in genau diesem Moment ab, geht eine ungültige Nachricht verloren. Gültige nie | Publisher Confirms einschalten (PLANUNG.md: erst messen, dann härten) |
 | 3 | **Die Datenbank wächst** um etwa 1,2 GB pro Stunde bei Dauerlast | Platz | Siehe PLANUNG.md, offener Punkt 2. Nicht Teil dieser Aufgabe |
 | 4 | **Schema ändert sich nur mit `down -v`** | Kein Weg für spätere Änderungen an einer laufenden Datenbank | Ein Migrationswerkzeug, wenn es die erste echte Änderung gibt |
 | 5 | **Ein eingeschleuster Fehler im Dienst** (zum Beispiel falsches SQL) wird wie ein Datenbankausfall endlos wiederholt | Die Nachrichten bleiben sicher in der Queue, aber nichts wird geschrieben. Die Fehlermeldung im Log ist das einzige Signal | Überwachung der Queue-Tiefe (PLANUNG.md, Schritt 5) |
+| 6 | **Falsche Queue-Argumente machen einen Zombie** | Der Container läuft, tut aber nichts (0 Verbraucher). `docker compose ps` zeigt `running` | Einen Healthcheck, der die Zahl der Verbraucher prüft, oder den Dienst beenden, wenn die Deklaration scheitert. Nicht gebaut |
+| 7 | **`RETRY_DELAY_MS` negativ** | `Thread.sleep` wirft beim ersten Datenbankfehler eine Ausnahme und verdeckt die eigentliche. Der Stapel kommt trotzdem zurück, aber ohne Pause, also im Dauerfeuer | Beim Start prüfen wie `BATCH_TIMEOUT_MS`. Nicht gebaut, nicht getestet |
+| 8 | **Einzelnes Surrogat-Zeichen im Text** (`\ud800` im JSON, kein gültiges Unicode) | Der Treiber speichert stillschweigend `?` statt des Zeichens. Die Nachricht wird nicht abgelehnt | Beim Prüfen ablehnen. Nicht gebaut, weil kein gültiger Text davon betroffen ist |
+
+---
+
+## 8. Gemessene Randfälle
+
+Am 01.10.2026 gegen den laufenden Stack ausprobiert, nicht nur im Test. «Bestanden» heisst: so
+wie in Abschnitt 3 beschrieben.
+
+| Block | Versuch | Ergebnis |
+|---|---|---|
+| A | 16 merkwürdige Körper: kein JSON, leer, `[]`, `"text"`, `123`, `{}`, ungültiges UTF-8, 3000-fach verschachtelt, `content` als Objekt, NUL-Zeichen, abgeschnittenes JSON. Dazu gültige: mit BOM, `content` als Zahl, doppelter Schlüssel, `content_type: text/plain` | bestanden: 11 in `chat.dlq`, 5 in der Tabelle, Queue leer, Dienst läuft |
+| B | Emoji, Umlaute, Anführungszeichen, Zeilenumbruch, 5 MB Text, 100'000 Zeichen im Namen, Nil-UUID als Raum | bestanden: Text byteweise gleich (Prüfsumme), alles gespeichert |
+| C | `sentAt` im Jahr +999999999, 294277 und -999999999 | **gefunden:** Zukunft blockiert die Queue, Vergangenheit wird `-infinity`. Behoben (E13), per Test abgesichert |
+| D | Datenbank steht, dazu eine ungültige und eine gültige Nachricht | bestanden: `chat.dlq` bleibt leer, bis die Datenbank zurück ist, danach genau eine Kopie |
+| E | Writer mit `kill -9` abgeschossen, während ein unbestätigter Stapel an der eingefrorenen Datenbank hing | bestanden: nichts verloren, nach dem Neustart 500 von 500, keine Duplikate |
+| F, G | Postgres mit `kill -9`; RabbitMQ neu gestartet | bestanden: jeweils alle 200 Nachrichten, Writer ohne Neustart |
+| H | Writer startet, während Postgres tot ist | bestanden: läuft, wiederholt, nach der Rückkehr 50 von 50 |
+| I | `chat.persist` existiert ohne Dead-Letter-Argumente | **Abweichung von der ersten Fassung dieser Spezifikation:** Zombie statt Startabbruch (3.1, 7 Punkt 6) |
+| J | `BATCH_SIZE=abc`, `0`, `1`; `BATCH_TIMEOUT_MS=0` | `abc` und `0`: sauberer Startabbruch. `1`: läuft. **`BATCH_TIMEOUT_MS=0`: 100 % CPU im Leerlauf.** Behoben |
+| K | 3 Instanzen, 1000 Nachrichten plus 300 Kopien einer Nachricht gleichzeitig | bestanden: +1001 Zeilen, Log zählt 299 Duplikate, alle 3 Instanzen haben gearbeitet |
+| L | Gleiche `id` gross und klein geschrieben; `sentAt` ohne Zone, mit Offset, als Zahl | bestanden: Grossschreibung ist dasselbe Duplikat, ohne Zone geht in die Dead-Letter-Queue, Offset und Zahl werden richtig umgerechnet. Surrogat-Zeichen: siehe 7, Punkt 8 |

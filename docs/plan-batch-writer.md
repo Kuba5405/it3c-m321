@@ -240,6 +240,28 @@ testen, starten» (PostgreSQL per Testcontainers, `scripts/`), Verweise auf Spez
 
 ---
 
+## Nachtrag: Randfall-Versuche (nicht im ursprünglichen Plan)
+
+**Warum:** Bis Aufgabe 10 waren die Szenarien und der Normalfall geprüft, nicht aber, was passiert, wenn
+etwas schiefgeht, woran niemand gedacht hat. Auf Wunsch wurde der fertige Dienst gezielt auf Fehler
+angegriffen, am laufenden Stack (Spezifikation, Abschnitt 8).
+
+**Gefunden und behoben**, je mit einem Test, der vorher rot war:
+
+| Fund | Wirkung | Commit |
+|---|---|---|
+| `sentAt` weit in der Zukunft | Ein einziges Stück Nachricht blockiert die Queue für immer | `fix: Zeitpunkte ausserhalb von Jahr 1 bis 9999 in die Dead-Letter-Queue legen` |
+| `sentAt` weit in der Vergangenheit | Die Datenbank speichert stillschweigend `-infinity` | derselbe Commit |
+| `BATCH_TIMEOUT_MS=0` | 100 % CPU im Leerlauf | `fix: Unsinnige Stapel-Einstellungen beim Start ablehnen` |
+
+**Gefunden, nicht behoben, in der Spezifikation benannt** (Abschnitt 7, Punkte 6 bis 8): der Zombie bei
+falschen Queue-Argumenten, eine unvalidierte negative `RETRY_DELAY_MS`, das stille `?` bei einzelnen
+Surrogat-Zeichen.
+
+**Korrigiert wurde ausserdem ein falscher Satz der Spezifikation** (3.1: «der Dienst startet nicht»).
+
+---
+
 ## Abschluss-Prüfung
 
 - [ ] `mvn clean test` im Wurzelverzeichnis: alles grün, in einem Lauf (S1)
