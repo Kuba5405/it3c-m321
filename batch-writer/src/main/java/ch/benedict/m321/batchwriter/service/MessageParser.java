@@ -8,6 +8,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.time.Instant;
 
 /**
  * Macht aus den rohen Bytes einer Queue-Nachricht eine ChatMessage und
@@ -23,6 +24,19 @@ public class MessageParser {
 
     /** Das Zeichen mit dem Code 0. PostgreSQL kann es in einem Text nicht speichern. */
     private static final char NULL_CHARACTER = 0;
+
+    /**
+     * Die Grenzen für sentAt: das Jahr 1 bis zum Ende des Jahres 9999.
+     *
+     * PostgreSQL speichert Zeitpunkte bis zum Jahr 294276 und lehnt alles darüber
+     * ab. Eine abgelehnte Nachricht lässt den ganzen Stapel scheitern, bei jeder
+     * Wiederholung erneut, und die Queue steht still. Noch schlimmer ist ein Zeitpunkt
+     * weit vor dem Jahr 1: den speichert der Treiber stillschweigend als "-infinity".
+     * Beides wurde bei Randfall-Versuchen am 01.10.2026 gemessen. Ein Chat braucht
+     * keine Nachricht aus dem Jahr 20000, also lehnen wir sie vor der Datenbank ab.
+     */
+    private static final Instant EARLIEST_SENT_AT = Instant.parse("0001-01-01T00:00:00Z");
+    private static final Instant LATEST_SENT_AT = Instant.parse("9999-12-31T23:59:59.999999999Z");
 
     private final ObjectMapper objectMapper;
 
@@ -83,6 +97,18 @@ public class MessageParser {
         requireText(message.senderName(), "senderName");
         requireText(message.content(), "content");
         requirePresent(message.sentAt(), "sentAt");
+        requireSentAtInRange(message.sentAt());
+    }
+
+    /**
+     * Der Zeitpunkt muss zwischen EARLIEST_SENT_AT und LATEST_SENT_AT liegen.
+     */
+    private void requireSentAtInRange(Instant sentAt) throws InvalidMessageException {
+        boolean tooEarly = sentAt.isBefore(EARLIEST_SENT_AT);
+        boolean tooLate = sentAt.isAfter(LATEST_SENT_AT);
+        if (tooEarly || tooLate) {
+            throw new InvalidMessageException("field 'sentAt' is out of range (year 1 to 9999)");
+        }
     }
 
     /**

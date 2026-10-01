@@ -6,6 +6,8 @@ import ch.benedict.m321.batchwriter.dto.ChatMessage;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
 
+import java.time.Instant;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -137,5 +139,69 @@ class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
         assertEquals(1000, countRows());
         assertEquals(0, queueMessageCount(QueueNames.PERSIST_QUEUE));
         assertTrue(writeTransactions <= 10, "Write transactions: " + writeTransactions);
+    }
+
+    /**
+     * Die gefährlichste Nachricht: ein Zeitstempel im Jahr 999999999, den PostgreSQL
+     * nicht speichern kann (der Bereich endet im Jahr 294276).
+     *
+     * Ohne Gegenmassnahme scheitert der ganze Stapel, kommt zurück, scheitert wieder,
+     * und die Queue steht für immer still. Gefunden bei den Randfall-Versuchen am
+     * 01.10.2026. Erwartet: die gesunden Nachrichten daneben werden gespeichert, die
+     * unmögliche landet mit Begründung in chat.dlq.
+     */
+    @Test
+    void movesAMessageWithAnImpossibleTimeToTheDeadLetterQueueAndStoresTheRest() throws Exception {
+        ChatMessage first = createMessage("gesund eins");
+        ChatMessage second = createMessage("gesund zwei");
+        ChatMessage firstTemplate = createMessage("Jahr 999999999");
+        Instant impossibleTime = Instant.parse("+999999999-12-31T23:59:59Z");
+        ChatMessage impossible = new ChatMessage(firstTemplate.id(), firstTemplate.roomId(),
+                "anna", "Anna Muster", "Jahr 999999999", impossibleTime);
+        stopListener();
+        publishLikeChatService(first);
+        publishLikeChatService(impossible);
+        publishLikeChatService(second);
+        waitForQueueCount(QueueNames.PERSIST_QUEUE, 3);
+
+        startListener();
+
+        waitForRows(2);
+        waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
+        waitForQueueCount(QueueNames.DEAD_LETTER_QUEUE, 1);
+        assertEquals(2, countRows());
+        assertEquals(0, queueMessageCount(QueueNames.PERSIST_QUEUE));
+        Message deadLetter = rabbitTemplate.receive(QueueNames.DEAD_LETTER_QUEUE, 5000);
+        assertNotNull(deadLetter);
+        Object reason = deadLetter.getMessageProperties().getHeader("x-error-reason");
+        assertTrue(reason.toString().contains("out of range"), reason.toString());
+    }
+
+    /**
+     * Mehrere unmögliche Zeitpunkte im selben Stapel, hier weit in der Vergangenheit, wo
+     * PostgreSQL nicht ablehnt, sondern still "-infinity" speichert. Jede geht einzeln in
+     * die Dead-Letter-Queue, die gesunden bleiben unberührt.
+     */
+    @Test
+    void movesSeveralMessagesWithImpossibleTimesOfOneBatch() throws Exception {
+        Instant impossibleTime = Instant.parse("-999999999-01-01T00:00:00Z");
+        stopListener();
+        for (int i = 0; i < 3; i++) {
+            ChatMessage healthy = createMessage("gesund " + i);
+            ChatMessage template = createMessage("kaputt " + i);
+            ChatMessage impossible = new ChatMessage(template.id(), template.roomId(),
+                    "anna", "Anna Muster", template.content(), impossibleTime);
+            publishLikeChatService(healthy);
+            publishLikeChatService(impossible);
+        }
+        waitForQueueCount(QueueNames.PERSIST_QUEUE, 6);
+
+        startListener();
+
+        waitForRows(3);
+        waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
+        waitForQueueCount(QueueNames.DEAD_LETTER_QUEUE, 3);
+        assertEquals(3, countRows());
+        assertEquals(3, queueMessageCount(QueueNames.DEAD_LETTER_QUEUE));
     }
 }

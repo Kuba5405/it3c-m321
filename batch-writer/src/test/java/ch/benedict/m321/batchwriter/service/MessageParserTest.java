@@ -165,6 +165,49 @@ class MessageParserTest {
     }
 
     /**
+     * Ein Zeitpunkt weit in der Zukunft, den PostgreSQL ablehnt (der Bereich endet im
+     * Jahr 294276). Er würde den ganzen Stapel scheitern lassen, bei jeder Wiederholung
+     * erneut: die Queue stünde still. Gefunden bei den Randfall-Versuchen am 01.10.2026.
+     */
+    @Test
+    void rejectsATimeFarInTheFuture() {
+        String json = REAL_CHAT_SERVICE_BODY.replace("2026-10-01T07:38:47.713518425Z", "+999999999-12-31T23:59:59Z");
+
+        assertRejected(json, "'sentAt' is out of range");
+    }
+
+    /**
+     * Ein Zeitpunkt weit in der Vergangenheit. Hier lehnt PostgreSQL NICHT ab, es speichert
+     * stillschweigend "-infinity". Das ist schlimmer als ein Fehler, denn niemand merkt es.
+     */
+    @Test
+    void rejectsATimeFarInThePast() {
+        String json = REAL_CHAT_SERVICE_BODY.replace("2026-10-01T07:38:47.713518425Z", "-999999999-01-01T00:00:00Z");
+
+        assertRejected(json, "'sentAt' is out of range");
+    }
+
+    /**
+     * Die Grenzen selbst gelten noch: das Jahr 1 und das Ende des Jahres 9999 sind erlaubt,
+     * eine Nanosekunde davor und danach nicht.
+     */
+    @Test
+    void acceptsTheLimitsOfTheTimeRangeButNothingBeyond() throws InvalidMessageException {
+        String earliest = REAL_CHAT_SERVICE_BODY.replace("2026-10-01T07:38:47.713518425Z", "0001-01-01T00:00:00Z");
+        String latest = REAL_CHAT_SERVICE_BODY.replace("2026-10-01T07:38:47.713518425Z", "9999-12-31T23:59:59.999999999Z");
+        String tooEarly = REAL_CHAT_SERVICE_BODY.replace("2026-10-01T07:38:47.713518425Z", "0000-12-31T23:59:59.999999999Z");
+        String tooLate = REAL_CHAT_SERVICE_BODY.replace("2026-10-01T07:38:47.713518425Z", "+10000-01-01T00:00:00Z");
+
+        ChatMessage first = messageParser.parse(earliest.getBytes(StandardCharsets.UTF_8));
+        ChatMessage last = messageParser.parse(latest.getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(Instant.parse("0001-01-01T00:00:00Z"), first.sentAt());
+        assertEquals(Instant.parse("9999-12-31T23:59:59.999999999Z"), last.sentAt());
+        assertRejected(tooEarly, "'sentAt' is out of range");
+        assertRejected(tooLate, "'sentAt' is out of range");
+    }
+
+    /**
      * Baut aus dem echten Körper einen, in dem ein Feld null ist. Das ist
      * für den Parser dasselbe wie ein fehlendes Feld.
      */
