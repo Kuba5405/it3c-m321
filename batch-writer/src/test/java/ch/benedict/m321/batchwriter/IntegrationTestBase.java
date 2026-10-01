@@ -51,7 +51,11 @@ public abstract class IntegrationTestBase {
     protected static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withCopyFileToContainer(
                     MountableFile.forHostPath(initScriptPath()),
-                    "/docker-entrypoint-initdb.d/init.sql");
+                    "/docker-entrypoint-initdb.d/init.sql")
+            // Dieselben Zeitgrenzen wie in application.yml: ein hängender Server
+            // darf den Test nicht ewig festhalten.
+            .withUrlParam("connectTimeout", "5")
+            .withUrlParam("socketTimeout", "30");
 
     /**
      * Der Broker, mit Management-Plugin, damit der Test mit rabbitmqctl

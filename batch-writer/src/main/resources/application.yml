@@ -28,6 +28,8 @@ batch-writer:
   batch-size: ${BATCH_SIZE:500}
   # ... oder wenn so viele Millisekunden vergangen sind. Was zuerst eintritt.
   batch-timeout-ms: ${BATCH_TIMEOUT_MS:200}
+  # Pause nach einem Datenbankfehler, bevor der Stapel zurück in die Queue geht.
+  retry-delay-ms: ${RETRY_DELAY_MS:2000}
 
 logging:
   level:

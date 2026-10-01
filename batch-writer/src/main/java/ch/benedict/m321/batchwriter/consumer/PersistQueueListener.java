@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -40,6 +41,14 @@ public class PersistQueueListener {
     private final DeadLetterPublisher deadLetterPublisher;
 
     /**
+     * Wie lange wir nach einem Datenbankfehler warten, bevor der Stapel
+     * zurückgelegt wird. Als Feld mit @Value statt im Konstruktor, weil
+     * Lombok den Konstruktor für die drei Klassen oben schreibt.
+     */
+    @Value("${batch-writer.retry-delay-ms}")
+    private long retryDelayMillis;
+
+    /**
      * Wird vom Container mit einem ganzen Stapel aufgerufen: höchstens
      * batchSize Nachrichten, oder was in der Zeit zusammenkam.
      *
@@ -55,7 +64,7 @@ public class PersistQueueListener {
 
         sortIntoValidAndRejected(messages, validMessages, rejectedMessages);
 
-        int inserted = messageRepository.saveAll(validMessages);
+        int inserted = writeToDatabase(validMessages);
         moveRejectedToDeadLetterQueue(rejectedMessages);
 
         logBatch(messages.size(), inserted, validMessages.size(), rejectedMessages.size(), startNanos);
@@ -77,6 +86,40 @@ public class PersistQueueListener {
                 RejectedMessage rejected = new RejectedMessage(message, exception.getMessage());
                 rejectedMessages.add(rejected);
             }
+        }
+    }
+
+    /**
+     * Schreibt die gültigen Nachrichten und fängt einen Fehler der Datenbank ab.
+     *
+     * Was auch immer schiefgeht (Datenbank steht, Verbindung tot, Zeitgrenze),
+     * der Fehler liegt nicht an den Nachrichten. Sie sind noch nicht bestätigt
+     * und liegen sicher in der Queue. Wir warten kurz und werfen den Fehler
+     * WEITER: der Container legt dann den ganzen Stapel zurück, und der Broker
+     * liefert ihn erneut. Das wiederholt sich, bis die Datenbank zurück ist.
+     * Ohne die Pause wären es hunderte Versuche pro Sekunde (Spezifikation 3.4).
+     */
+    private int writeToDatabase(List<ChatMessage> validMessages) {
+        try {
+            return messageRepository.saveAll(validMessages);
+        } catch (RuntimeException exception) {
+            log.error("Database write failed, batch of {} goes back to the queue in {} ms: {}",
+                    validMessages.size(), retryDelayMillis, exception.getMessage());
+            waitBeforeRetry();
+            throw exception;
+        }
+    }
+
+    /**
+     * Legt den Verbraucher für die Dauer der Pause schlafen. Wird er dabei
+     * unterbrochen (der Dienst wird gerade beendet), merkt er sich das und
+     * macht sofort weiter, statt das Beenden aufzuhalten.
+     */
+    private void waitBeforeRetry() {
+        try {
+            Thread.sleep(retryDelayMillis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 
