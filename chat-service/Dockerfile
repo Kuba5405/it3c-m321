@@ -5,6 +5,9 @@ FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
 COPY pom.xml .
 COPY chat-service/pom.xml chat-service/pom.xml
+# Das Eltern-POM listet auch batch-writer. Maven liest dessen POM, selbst wenn
+# nur chat-service gebaut wird, darum muss es im Build vorhanden sein.
+COPY batch-writer/pom.xml batch-writer/pom.xml
 COPY chat-service/src chat-service/src
 # Tests werden hier übersprungen: Testcontainers bräuchte einen Docker-Daemon
 # INNERHALB des Builds. Getestet wird vorher mit "mvn test".

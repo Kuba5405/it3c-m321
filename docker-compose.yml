@@ -1,6 +1,5 @@
-# Ausbaustufe 1: nur der Broker und der chat-service.
-# Postgres, Keycloak, web-gateway und batch-writer kommen in den
-# folgenden Schritten dazu.
+# Ausbaustufe 2: Broker, chat-service, Datenbank und batch-writer.
+# Keycloak und web-gateway kommen in den folgenden Schritten dazu.
 services:
 
   rabbitmq:
@@ -30,8 +29,60 @@ services:
     networks:
       - chat-net
 
-# KEIN ports:-Eintrag in dieser Datei. Der einzige offene Port des
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Benannter Datenträger: die Nachrichten überleben ein "docker compose down".
+      - postgres-data:/var/lib/postgresql/data
+      # Das Image führt diese Datei EINMAL aus, beim ersten Start mit leerem
+      # Datenträger. Sie legt die Tabelle message an. Eine Änderung wirkt erst
+      # nach "docker compose down -v".
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - chat-net
+    healthcheck:
+      # $$ statt $: Compose lässt das Dollarzeichen stehen, und die Shell im
+      # Container setzt die Variable ein.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Kein container_name und keine Port-Freigabe: so lässt sich der Dienst mit
+  # "docker compose up -d --scale batch-writer=2" vervielfachen.
+  batch-writer:
+    build:
+      context: .
+      dockerfile: batch-writer/Dockerfile
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Mit Vorgabewert, damit eine ältere .env ohne diese Zeilen weiter funktioniert.
+      BATCH_SIZE: ${BATCH_SIZE:-500}
+      BATCH_TIMEOUT_MS: ${BATCH_TIMEOUT_MS:-200}
+      RETRY_DELAY_MS: ${RETRY_DELAY_MS:-2000}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - chat-net
+
+# KEINE Port-Freigabe in dieser Datei. Der einzige offene Port des
 # Gesamtsystems gehört später dem web-gateway.
 networks:
   chat-net:
     name: chat-net
+
+volumes:
+  postgres-data:
