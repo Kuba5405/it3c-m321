@@ -15,6 +15,12 @@
     <description>Holt Nachrichten aus der Queue und schreibt sie stapelweise in PostgreSQL</description>
 
     <dependencies>
+        <!-- Jackson liest die JSON-Nachrichten, inklusive Instant (Zeitstempel) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+        </dependency>
+
         <!-- Treiber, mit dem Java mit PostgreSQL spricht -->
         <dependency>
             <groupId>org.postgresql</groupId>
