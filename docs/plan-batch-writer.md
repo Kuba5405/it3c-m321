@@ -461,10 +461,13 @@ lückenlos übereinstimmen, steht hier jeder Commit ab Aufgabe 10 an seiner echt
 
 ## Abschluss-Prüfung
 
-- [ ] `mvn clean test` im Wurzelverzeichnis: alles grün, in einem Lauf (S1)
-- [ ] `scripts/verify-batch-writer.sh`: S2 bis S7 `PASS`
-- [ ] `scripts/check-code-rules.sh`: S8 `PASS`
-- [ ] `git status --short` sauber, `git ls-files | grep -x .env` ohne Treffer
-- [ ] `git log --oneline` liest sich wie die Tabelle oben
-- [ ] Lief ein Schritt anders als geplant, steht die Abweichung **hier im Plan nachgetragen**,
+Ausgeführt am 02.10.2026 in einem frischen Klon von GitHub (Stand `9546718`), mit
+`cp .env.example .env` und JDK 21. Ergebnis: S1 (14 + 44 Tests), S2 bis S7 und S8 bestanden.
+
+- [x] `mvn clean test` im Wurzelverzeichnis: alles grün, in einem Lauf (S1)
+- [x] `scripts/verify-batch-writer.sh`: S2 bis S7 `PASS`
+- [x] `scripts/check-code-rules.sh`: S8 `PASS`
+- [x] `git status --short` sauber, `git ls-files | grep -x .env` ohne Treffer
+- [x] `git log --oneline` liest sich wie die Tabelle oben
+- [x] Lief ein Schritt anders als geplant, steht die Abweichung **hier im Plan nachgetragen**,
       mit eigenem Commit, nicht verschwiegen
