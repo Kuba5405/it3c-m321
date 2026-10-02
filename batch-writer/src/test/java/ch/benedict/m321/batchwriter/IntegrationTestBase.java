@@ -29,6 +29,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 /**
  * Gemeinsame Grundlage aller Tests, die den ganzen Dienst brauchen.
  *
@@ -48,14 +50,7 @@ public abstract class IntegrationTestBase {
      * Gestartet wird sie von Hand im static-Block, nicht von JUnit, damit sie
      * für die ganze Testausführung am Leben bleibt.
      */
-    protected static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
-            .withCopyFileToContainer(
-                    MountableFile.forHostPath(initScriptPath()),
-                    "/docker-entrypoint-initdb.d/init.sql")
-            // Dieselben Zeitgrenzen wie in application.yml: ein hängender Server
-            // darf den Test nicht ewig festhalten.
-            .withUrlParam("connectTimeout", "5")
-            .withUrlParam("socketTimeout", "30");
+    protected static final PostgreSQLContainer<?> POSTGRES = createPostgresContainer();
 
     /**
      * Der Broker, mit Management-Plugin, damit der Test mit rabbitmqctl
@@ -80,6 +75,22 @@ public abstract class IntegrationTestBase {
     /** Das Register aller Verbraucher: damit lässt sich der Verbraucher anhalten und starten. */
     @Autowired
     protected RabbitListenerEndpointRegistry listenerRegistry;
+
+    /**
+     * Baut den Datenbank-Container Schritt für Schritt auf, noch ohne ihn zu starten.
+     *
+     * Die Zeitgrenzen sind dieselben wie in application.yml: ein hängender Server
+     * darf den Test nicht ewig festhalten.
+     */
+    private static PostgreSQLContainer<?> createPostgresContainer() {
+        PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16-alpine");
+        Path initScript = initScriptPath();
+        MountableFile initScriptFile = MountableFile.forHostPath(initScript);
+        container.withCopyFileToContainer(initScriptFile, "/docker-entrypoint-initdb.d/init.sql");
+        container.withUrlParam("connectTimeout", "5");
+        container.withUrlParam("socketTimeout", "30");
+        return container;
+    }
 
     /**
      * Berechnet den absoluten Pfad der init.sql, damit der Test nicht davon
@@ -202,7 +213,8 @@ public abstract class IntegrationTestBase {
         String json = toJson(message);
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
 
-        rabbitTemplate.send("", QueueNames.PERSIST_QUEUE, new Message(body, properties));
+        Message queueMessage = new Message(body, properties);
+        rabbitTemplate.send("", QueueNames.PERSIST_QUEUE, queueMessage);
     }
 
     /**
@@ -214,7 +226,8 @@ public abstract class IntegrationTestBase {
         properties.setContentType("application/json");
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
 
-        rabbitTemplate.send("", QueueNames.PERSIST_QUEUE, new Message(body, properties));
+        Message queueMessage = new Message(body, properties);
+        rabbitTemplate.send("", QueueNames.PERSIST_QUEUE, queueMessage);
     }
 
     /**
@@ -257,12 +270,30 @@ public abstract class IntegrationTestBase {
         String[] lines = output.split("\n");
 
         for (int i = 0; i < lines.length; i++) {
-            String[] columns = lines[i].trim().split("\\s+");
+            String line = lines[i].trim();
+            String[] columns = line.split("\\s+");
             if (columns.length == 2 && columns[0].equals(queueName)) {
                 return Integer.parseInt(columns[1]);
             }
         }
         return 0;
+    }
+
+    /**
+     * Prüft, dass die Tabelle genau so viele Zeilen hat. Liest zuerst, vergleicht danach:
+     * so steht in den Tests kein Aufruf im Aufruf.
+     */
+    protected void assertRowCount(long expectedRows) {
+        long actualRows = countRows();
+        assertEquals(expectedRows, actualRows);
+    }
+
+    /**
+     * Prüft, dass eine Queue genau so viele Nachrichten enthält (bereite und unbestätigte).
+     */
+    protected void assertQueueCount(String queueName, int expectedCount) throws IOException, InterruptedException {
+        int actualCount = queueMessageCount(queueName);
+        assertEquals(expectedCount, actualCount);
     }
 
     /**

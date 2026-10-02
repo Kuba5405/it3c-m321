@@ -119,7 +119,8 @@ public class PersistQueueListener {
         try {
             Thread.sleep(retryDelayMillis);
         } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
+            Thread currentThread = Thread.currentThread();
+            currentThread.interrupt();
         }
     }
 

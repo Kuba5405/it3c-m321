@@ -38,7 +38,7 @@ class MessageRepositoryIntegrationTest extends IntegrationTestBase {
         int inserted = messageRepository.saveAll(batch);
 
         assertEquals(3, inserted);
-        assertEquals(3, countRows());
+        assertRowCount(3);
         assertStoredLikeSent(first);
     }
 
@@ -58,7 +58,7 @@ class MessageRepositoryIntegrationTest extends IntegrationTestBase {
 
         assertEquals(1, firstInserted);
         assertEquals(0, secondInserted);
-        assertEquals(1, countRows());
+        assertRowCount(1);
     }
 
     /**
@@ -73,7 +73,7 @@ class MessageRepositoryIntegrationTest extends IntegrationTestBase {
         int inserted = messageRepository.saveAll(batch);
 
         assertEquals(1, inserted);
-        assertEquals(1, countRows());
+        assertRowCount(1);
     }
 
     /**
@@ -85,9 +85,11 @@ class MessageRepositoryIntegrationTest extends IntegrationTestBase {
         ChatMessage original = createMessage("Original");
         ChatMessage impostor = new ChatMessage(original.id(), original.roomId(),
                 "mallory", "Mallory", "Fälschung", original.sentAt());
-        messageRepository.saveAll(List.of(original));
+        List<ChatMessage> originalBatch = List.of(original);
+        List<ChatMessage> impostorBatch = List.of(impostor);
+        messageRepository.saveAll(originalBatch);
 
-        messageRepository.saveAll(List.of(impostor));
+        messageRepository.saveAll(impostorBatch);
 
         assertStoredLikeSent(original);
     }
@@ -125,7 +127,7 @@ class MessageRepositoryIntegrationTest extends IntegrationTestBase {
 
         Long after = jdbcTemplate.queryForObject("SELECT txid_current()", Long.class);
         assertEquals(1000, inserted);
-        assertEquals(1000, countRows());
+        assertRowCount(1000);
         assertEquals(2, after - before, "Expected exactly one write transaction in between");
     }
 
@@ -147,7 +149,7 @@ class MessageRepositoryIntegrationTest extends IntegrationTestBase {
             messageRepository.saveAll(batch);
             fail("The database should have rejected the NUL character");
         } catch (DataAccessException expected) {
-            assertEquals(0, countRows());
+            assertRowCount(0);
         }
     }
 
@@ -159,15 +161,18 @@ class MessageRepositoryIntegrationTest extends IntegrationTestBase {
     @Test
     void storesTimestampWithSixDigits() {
         Instant sentAt = Instant.parse("2026-10-01T07:38:47.713518600Z");
-        ChatMessage message = new ChatMessage(UUID.randomUUID(), UUID.randomUUID(),
-                "anna", "Anna Muster", "Hallo", sentAt);
+        UUID messageId = UUID.randomUUID();
+        UUID roomId = UUID.randomUUID();
+        ChatMessage message = new ChatMessage(messageId, roomId, "anna", "Anna Muster", "Hallo", sentAt);
+        List<ChatMessage> batch = List.of(message);
 
-        messageRepository.saveAll(List.of(message));
+        messageRepository.saveAll(batch);
 
         OffsetDateTime stored = jdbcTemplate.queryForObject(
                 "SELECT sent_at FROM message WHERE id = ?", OffsetDateTime.class, message.id());
         Instant storedInstant = stored.toInstant();
-        assertEquals(Instant.parse("2026-10-01T07:38:47.713519Z"), storedInstant);
+        Instant expectedInstant = Instant.parse("2026-10-01T07:38:47.713519Z");
+        assertEquals(expectedInstant, storedInstant);
     }
 
     /**

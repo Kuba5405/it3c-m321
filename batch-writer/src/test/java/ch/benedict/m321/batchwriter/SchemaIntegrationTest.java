@@ -34,10 +34,18 @@ class SchemaIntegrationTest {
      * Der Pfad geht vom Modulordner batch-writer/ aus eine Ebene nach oben.
      */
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine")
-            .withCopyFileToContainer(
-                    MountableFile.forHostPath(initScriptPath()),
-                    "/docker-entrypoint-initdb.d/init.sql");
+    static PostgreSQLContainer<?> postgres = createPostgresContainer();
+
+    /**
+     * Baut den Datenbank-Container Schritt für Schritt auf, noch ohne ihn zu starten.
+     */
+    private static PostgreSQLContainer<?> createPostgresContainer() {
+        PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16-alpine");
+        Path initScript = initScriptPath();
+        MountableFile initScriptFile = MountableFile.forHostPath(initScript);
+        container.withCopyFileToContainer(initScriptFile, "/docker-entrypoint-initdb.d/init.sql");
+        return container;
+    }
 
     /**
      * Berechnet den absoluten Pfad der init.sql, damit der Test nicht davon
@@ -85,7 +93,8 @@ class SchemaIntegrationTest {
 
         List<String> primaryKeyColumns = readFirstColumn(sql);
 
-        assertEquals(List.of("id"), primaryKeyColumns);
+        List<String> expectedColumns = List.of("id");
+        assertEquals(expectedColumns, primaryKeyColumns);
     }
 
     /**

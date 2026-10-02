@@ -5,6 +5,7 @@ import ch.benedict.m321.batchwriter.config.QueueNames;
 import ch.benedict.m321.batchwriter.dto.ChatMessage;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageProperties;
 
 import java.time.Instant;
 
@@ -35,8 +36,8 @@ class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
 
         waitForRows(1);
         waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
-        assertEquals(1, countRows());
-        assertEquals(0, queueMessageCount(QueueNames.PERSIST_QUEUE));
+        assertRowCount(1);
+        assertQueueCount(QueueNames.PERSIST_QUEUE, 0);
         String content = jdbcTemplate.queryForObject(
                 "SELECT content FROM message WHERE id = ?", String.class, message.id());
         assertEquals("Hallo Schreibweg", content);
@@ -60,8 +61,8 @@ class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
 
         waitForRows(1);
         waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
-        assertEquals(1, countRows());
-        assertEquals(0, queueMessageCount(QueueNames.DEAD_LETTER_QUEUE));
+        assertRowCount(1);
+        assertQueueCount(QueueNames.DEAD_LETTER_QUEUE, 0);
     }
 
     /**
@@ -81,8 +82,8 @@ class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
 
         Thread.sleep(1000);
         waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
-        assertEquals(1, countRows());
-        assertEquals(0, queueMessageCount(QueueNames.DEAD_LETTER_QUEUE));
+        assertRowCount(1);
+        assertQueueCount(QueueNames.DEAD_LETTER_QUEUE, 0);
     }
 
     /**
@@ -105,11 +106,14 @@ class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
         waitForRows(2);
         waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
         waitForQueueCount(QueueNames.DEAD_LETTER_QUEUE, 1);
-        assertEquals(2, countRows());
+        assertRowCount(2);
         Message deadLetter = rabbitTemplate.receive(QueueNames.DEAD_LETTER_QUEUE, 5000);
         assertNotNull(deadLetter);
-        Object reason = deadLetter.getMessageProperties().getHeader("x-error-reason");
-        assertTrue(reason.toString().contains("not a readable chat message"), reason.toString());
+        MessageProperties deadLetterProperties = deadLetter.getMessageProperties();
+        Object reason = deadLetterProperties.getHeader("x-error-reason");
+        String reasonText = reason.toString();
+        boolean namesTheProblem = reasonText.contains("not a readable chat message");
+        assertTrue(namesTheProblem, reasonText);
     }
 
     /**
@@ -136,8 +140,8 @@ class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
         waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
         long after = currentTransactionNumber();
         long writeTransactions = after - before - 1;
-        assertEquals(1000, countRows());
-        assertEquals(0, queueMessageCount(QueueNames.PERSIST_QUEUE));
+        assertRowCount(1000);
+        assertQueueCount(QueueNames.PERSIST_QUEUE, 0);
         assertTrue(writeTransactions <= 10, "Write transactions: " + writeTransactions);
     }
 
@@ -169,12 +173,15 @@ class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
         waitForRows(2);
         waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
         waitForQueueCount(QueueNames.DEAD_LETTER_QUEUE, 1);
-        assertEquals(2, countRows());
-        assertEquals(0, queueMessageCount(QueueNames.PERSIST_QUEUE));
+        assertRowCount(2);
+        assertQueueCount(QueueNames.PERSIST_QUEUE, 0);
         Message deadLetter = rabbitTemplate.receive(QueueNames.DEAD_LETTER_QUEUE, 5000);
         assertNotNull(deadLetter);
-        Object reason = deadLetter.getMessageProperties().getHeader("x-error-reason");
-        assertTrue(reason.toString().contains("out of range"), reason.toString());
+        MessageProperties deadLetterProperties = deadLetter.getMessageProperties();
+        Object reason = deadLetterProperties.getHeader("x-error-reason");
+        String reasonText = reason.toString();
+        boolean namesTheProblem = reasonText.contains("out of range");
+        assertTrue(namesTheProblem, reasonText);
     }
 
     /**
@@ -201,7 +208,7 @@ class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
         waitForRows(3);
         waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
         waitForQueueCount(QueueNames.DEAD_LETTER_QUEUE, 3);
-        assertEquals(3, countRows());
-        assertEquals(3, queueMessageCount(QueueNames.DEAD_LETTER_QUEUE));
+        assertRowCount(3);
+        assertQueueCount(QueueNames.DEAD_LETTER_QUEUE, 3);
     }
 }

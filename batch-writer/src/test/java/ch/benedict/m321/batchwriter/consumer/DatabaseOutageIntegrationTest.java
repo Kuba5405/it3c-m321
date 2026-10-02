@@ -7,6 +7,9 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import com.github.dockerjava.api.DockerClient;
+import com.github.dockerjava.api.command.PauseContainerCmd;
+import com.github.dockerjava.api.command.UnpauseContainerCmd;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -71,15 +74,17 @@ class DatabaseOutageIntegrationTest extends IntegrationTestBase {
         }
         Thread.sleep(5000);
 
-        assertEquals(5, queueMessageCount(QueueNames.PERSIST_QUEUE), "Messages must stay in the queue");
-        assertEquals(0, queueMessageCount(QueueNames.DEAD_LETTER_QUEUE), "An outage is not the message's fault");
+        int waitingMessages = queueMessageCount(QueueNames.PERSIST_QUEUE);
+        int deadLetters = queueMessageCount(QueueNames.DEAD_LETTER_QUEUE);
+        assertEquals(5, waitingMessages, "Messages must stay in the queue");
+        assertEquals(0, deadLetters, "An outage is not the message's fault");
 
         resumeDatabase();
 
         waitForRows(5);
         waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
-        assertEquals(5, countRows());
-        assertEquals(0, queueMessageCount(QueueNames.DEAD_LETTER_QUEUE));
+        assertRowCount(5);
+        assertQueueCount(QueueNames.DEAD_LETTER_QUEUE, 0);
     }
 
     /**
@@ -108,7 +113,7 @@ class DatabaseOutageIntegrationTest extends IntegrationTestBase {
         assertTrue(failures >= 1, "Expected at least one logged failure, got " + failures);
         assertTrue(failures <= 6, "Expected few retries, got " + failures);
         waitForRows(1);
-        assertEquals(1, countRows());
+        assertRowCount(1);
     }
 
     /**
@@ -130,8 +135,8 @@ class DatabaseOutageIntegrationTest extends IntegrationTestBase {
 
         waitForRows(3);
         waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
-        assertEquals(3, countRows());
-        assertEquals(0, queueMessageCount(QueueNames.DEAD_LETTER_QUEUE));
+        assertRowCount(3);
+        assertQueueCount(QueueNames.DEAD_LETTER_QUEUE, 0);
     }
 
     /**
@@ -146,7 +151,10 @@ class DatabaseOutageIntegrationTest extends IntegrationTestBase {
      * Friert den Datenbank-Container ein.
      */
     private void pauseDatabase() {
-        POSTGRES.getDockerClient().pauseContainerCmd(POSTGRES.getContainerId()).exec();
+        DockerClient dockerClient = POSTGRES.getDockerClient();
+        String containerId = POSTGRES.getContainerId();
+        PauseContainerCmd pauseCommand = dockerClient.pauseContainerCmd(containerId);
+        pauseCommand.exec();
         databasePaused = true;
     }
 
@@ -154,7 +162,10 @@ class DatabaseOutageIntegrationTest extends IntegrationTestBase {
      * Taut den Datenbank-Container wieder auf.
      */
     private void resumeDatabase() {
-        POSTGRES.getDockerClient().unpauseContainerCmd(POSTGRES.getContainerId()).exec();
+        DockerClient dockerClient = POSTGRES.getDockerClient();
+        String containerId = POSTGRES.getContainerId();
+        UnpauseContainerCmd unpauseCommand = dockerClient.unpauseContainerCmd(containerId);
+        unpauseCommand.exec();
         databasePaused = false;
     }
 
@@ -165,8 +176,10 @@ class DatabaseOutageIntegrationTest extends IntegrationTestBase {
     private int countLoggedFailures() {
         int failures = 0;
         for (ILoggingEvent event : listenerLog.list) {
-            boolean isError = event.getLevel().equals(Level.ERROR);
-            boolean isWriteFailure = event.getFormattedMessage().contains("Database write failed");
+            Level level = event.getLevel();
+            String text = event.getFormattedMessage();
+            boolean isError = level.equals(Level.ERROR);
+            boolean isWriteFailure = text.contains("Database write failed");
             if (isError && isWriteFailure) {
                 failures = failures + 1;
             }

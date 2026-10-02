@@ -41,8 +41,10 @@ class DeadLetterPublisherIntegrationTest extends IntegrationTestBase {
         Message deadLetter = rabbitTemplate.receive(QueueNames.DEAD_LETTER_QUEUE, 5000);
         assertNotNull(deadLetter);
         assertArrayEquals(body, deadLetter.getBody());
-        assertEquals("application/json", deadLetter.getMessageProperties().getContentType());
-        Object reason = deadLetter.getMessageProperties().getHeader("x-error-reason");
+        MessageProperties deadLetterProperties = deadLetter.getMessageProperties();
+        String contentType = deadLetterProperties.getContentType();
+        Object reason = deadLetterProperties.getHeader("x-error-reason");
+        assertEquals("application/json", contentType);
         assertEquals("not a readable chat message", reason);
     }
 
@@ -54,7 +56,8 @@ class DeadLetterPublisherIntegrationTest extends IntegrationTestBase {
     @Test
     void doesNotPutTheMessageBackOnThePersistQueue() {
         byte[] body = "kaputt".getBytes(StandardCharsets.UTF_8);
-        Message invalidMessage = new Message(body, new MessageProperties());
+        MessageProperties properties = new MessageProperties();
+        Message invalidMessage = new Message(body, properties);
 
         deadLetterPublisher.publish(invalidMessage, "test");
 

@@ -198,11 +198,16 @@ class MessageParserTest {
         String tooEarly = REAL_CHAT_SERVICE_BODY.replace("2026-10-01T07:38:47.713518425Z", "0000-12-31T23:59:59.999999999Z");
         String tooLate = REAL_CHAT_SERVICE_BODY.replace("2026-10-01T07:38:47.713518425Z", "+10000-01-01T00:00:00Z");
 
-        ChatMessage first = messageParser.parse(earliest.getBytes(StandardCharsets.UTF_8));
-        ChatMessage last = messageParser.parse(latest.getBytes(StandardCharsets.UTF_8));
+        byte[] earliestBody = earliest.getBytes(StandardCharsets.UTF_8);
+        byte[] latestBody = latest.getBytes(StandardCharsets.UTF_8);
+        Instant expectedEarliest = Instant.parse("0001-01-01T00:00:00Z");
+        Instant expectedLatest = Instant.parse("9999-12-31T23:59:59.999999999Z");
 
-        assertEquals(Instant.parse("0001-01-01T00:00:00Z"), first.sentAt());
-        assertEquals(Instant.parse("9999-12-31T23:59:59.999999999Z"), last.sentAt());
+        ChatMessage first = messageParser.parse(earliestBody);
+        ChatMessage last = messageParser.parse(latestBody);
+
+        assertEquals(expectedEarliest, first.sentAt());
+        assertEquals(expectedLatest, last.sentAt());
         assertRejected(tooEarly, "'sentAt' is out of range");
         assertRejected(tooLate, "'sentAt' is out of range");
     }

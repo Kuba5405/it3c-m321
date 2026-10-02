@@ -41,7 +41,7 @@ public class RabbitConfig {
 
     /**
      * Sagt dem Verbraucher-Container, wie er Stapel sammeln soll: er hält
-     * Nachrichten zurück, bis batchSize erreicht ist ODER timeoutMs vergangen
+     * Nachrichten zurück, bis batchSize erreicht ist ODER timeoutMillis vergangen
      * sind, und gibt dem Listener dann die ganze Liste auf einmal.
      *
      * Zwei Zeitgrenzen, und beide sind nötig:
@@ -63,16 +63,16 @@ public class RabbitConfig {
     public SimpleRabbitListenerContainerFactory batchContainerFactory(
             ConnectionFactory connectionFactory,
             @Value("${batch-writer.batch-size}") int batchSize,
-            @Value("${batch-writer.batch-timeout-ms}") long timeoutMs) {
-        checkSettings(batchSize, timeoutMs);
+            @Value("${batch-writer.batch-timeout-ms}") long timeoutMillis) {
+        checkSettings(batchSize, timeoutMillis);
 
         SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
         factory.setConnectionFactory(connectionFactory);
         factory.setBatchListener(true);
         factory.setConsumerBatchEnabled(true);
         factory.setBatchSize(batchSize);
-        factory.setBatchReceiveTimeout(timeoutMs);
-        factory.setReceiveTimeout(timeoutMs);
+        factory.setBatchReceiveTimeout(timeoutMillis);
+        factory.setReceiveTimeout(timeoutMillis);
         factory.setPrefetchCount(batchSize);
         factory.setConcurrentConsumers(1);
         return factory;
@@ -86,12 +86,12 @@ public class RabbitConfig {
      * Prozessorkern. Gemessen am 01.10.2026. Besser ein Fehler beim Start, der
      * die Variable beim Namen nennt, als ein Dienst, der unbemerkt heiss läuft.
      */
-    private void checkSettings(int batchSize, long timeoutMs) {
+    private void checkSettings(int batchSize, long timeoutMillis) {
         if (batchSize < 1) {
             throw new IllegalArgumentException("BATCH_SIZE must be at least 1, but is " + batchSize);
         }
-        if (timeoutMs < 1) {
-            throw new IllegalArgumentException("BATCH_TIMEOUT_MS must be at least 1, but is " + timeoutMs);
+        if (timeoutMillis < 1) {
+            throw new IllegalArgumentException("BATCH_TIMEOUT_MS must be at least 1, but is " + timeoutMillis);
         }
     }
 }

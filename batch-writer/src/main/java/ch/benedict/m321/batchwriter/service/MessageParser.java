@@ -76,7 +76,8 @@ public class MessageParser {
         try {
             message = objectMapper.readValue(body, ChatMessage.class);
         } catch (IOException exception) {
-            String errorType = exception.getClass().getSimpleName();
+            Class<?> errorClass = exception.getClass();
+            String errorType = errorClass.getSimpleName();
             throw new InvalidMessageException("not a readable chat message (" + errorType + ")");
         }
 

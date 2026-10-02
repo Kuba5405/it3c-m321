@@ -24,7 +24,9 @@ class RabbitConfigTest {
             rabbitConfig.batchContainerFactory(null, 500, 0);
             fail("A timeout of 0 must be refused");
         } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("BATCH_TIMEOUT_MS"), expected.getMessage());
+            String problem = expected.getMessage();
+            boolean namesTheVariable = problem.contains("BATCH_TIMEOUT_MS");
+            assertTrue(namesTheVariable, problem);
         }
     }
 
@@ -40,7 +42,9 @@ class RabbitConfigTest {
             rabbitConfig.batchContainerFactory(null, 500, -5);
             fail("A negative timeout must be refused");
         } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("BATCH_TIMEOUT_MS"), expected.getMessage());
+            String problem = expected.getMessage();
+            boolean namesTheVariable = problem.contains("BATCH_TIMEOUT_MS");
+            assertTrue(namesTheVariable, problem);
         }
     }
 
@@ -56,7 +60,9 @@ class RabbitConfigTest {
             rabbitConfig.batchContainerFactory(null, 0, 200);
             fail("A batch size of 0 must be refused");
         } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("BATCH_SIZE"), expected.getMessage());
+            String problem = expected.getMessage();
+            boolean namesTheVariable = problem.contains("BATCH_SIZE");
+            assertTrue(namesTheVariable, problem);
         }
     }
 }

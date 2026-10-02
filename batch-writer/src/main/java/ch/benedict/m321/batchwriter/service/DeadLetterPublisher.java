@@ -4,6 +4,7 @@ import ch.benedict.m321.batchwriter.config.QueueNames;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 
@@ -36,7 +37,8 @@ public class DeadLetterPublisher {
      * Darum bleiben Körper und alle übrigen Eigenschaften, wie sie waren.
      */
     public void publish(Message invalidMessage, String reason) {
-        invalidMessage.getMessageProperties().setHeader(REASON_HEADER, reason);
+        MessageProperties properties = invalidMessage.getMessageProperties();
+        properties.setHeader(REASON_HEADER, reason);
 
         rabbitTemplate.send(DEFAULT_EXCHANGE, QueueNames.DEAD_LETTER_QUEUE, invalidMessage);
 

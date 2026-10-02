@@ -59,8 +59,11 @@ class RabbitConfigIntegrationTest extends IntegrationTestBase {
         ExecResult result = RABBIT.execInContainer("rabbitmqctl", "list_queues", "name", "arguments");
         String output = result.getStdout();
 
-        assertTrue(output.contains("x-dead-letter-exchange"), output);
-        assertTrue(output.contains("x-dead-letter-routing-key"), output);
-        assertTrue(output.contains("chat.dlq"), output);
+        boolean hasExchange = output.contains("x-dead-letter-exchange");
+        boolean hasRoutingKey = output.contains("x-dead-letter-routing-key");
+        boolean pointsToDeadLetterQueue = output.contains("chat.dlq");
+        assertTrue(hasExchange, output);
+        assertTrue(hasRoutingKey, output);
+        assertTrue(pointsToDeadLetterQueue, output);
     }
 }
