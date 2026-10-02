@@ -35,7 +35,7 @@ Diese Punkte gelten für **jede** Aufgabe:
 |---|---|---|---|
 | 1 | Lombok auf jedem JDK | `fix: Lombok auch mit JDK 23 und neuer ausführen` | S1 |
 | 2 | Tabelle und Modul-Gerüst | `feat: Tabelle message mit Primärschlüssel und Index anlegen` | S2 |
-| 3 | Nachricht lesen und prüfen | `feat: Nachrichten aus JSON lesen und pruefen` | S5 |
+| 3 | Nachricht lesen und prüfen | `feat: Nachrichten aus JSON lesen und prüfen` | S5 |
 | 4 | Stapel in die Datenbank schreiben | `feat: Stapel in einer Transaktion in die Datenbank schreiben` | S3, S4, S5 |
 | 5 | Queues und Stapel-Verbraucher einrichten | `feat: Queues deklarieren und Stapel-Verbraucher konfigurieren` | S3, S6 |
 | 6 | Ungültige Nachrichten weglegen | `feat: Ungültige Nachrichten in chat.dlq veröffentlichen` | – |
@@ -259,6 +259,15 @@ falschen Queue-Argumenten, eine unvalidierte negative `RETRY_DELAY_MS`, das stil
 Surrogat-Zeichen.
 
 **Korrigiert wurde ausserdem ein falscher Satz der Spezifikation** (3.1: «der Dienst startet nicht»).
+
+**Weitere Abweichungen vom ursprünglichen Plan**, ehrlich nachgetragen:
+
+| Abweichung | Warum |
+|---|---|
+| Aufgabe 9 änderte auch `chat-service/Dockerfile` | Das Eltern-POM listet jetzt `batch-writer`. Maven liest dessen POM auch beim Bau nur des `chat-service`, das Dockerfile kopierte es nicht mit, der Image-Build wäre gebrochen |
+| Zusätzliche Testklasse `RabbitConfigTest` (Aufgabe 5, nachgeliefert im Commit zu den Einstellungen) | `BATCH_TIMEOUT_MS=0` liess den Dienst mit 100 % CPU laufen |
+| Commit `refactor: Verschachtelte Aufrufe im batch-writer auflösen` | Die Prüfung des fertigen Codes gegen `CLAUDE.md` fand im Testcode Aufrufe im Aufruf (`assertEquals(1, countRows())`) und Ketten. Verhalten unverändert, alle Tests wie vorher grün |
+| Plan-Tabelle, Aufgabe 3: Commit-Message hatte «pruefen» statt «prüfen» | Beim Ersetzen der Umlaute übersehen. Der Abgleich Plan gegen `git log` hat es gefunden |
 
 ---
 
