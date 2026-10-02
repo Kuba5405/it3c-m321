@@ -27,6 +27,8 @@ Diese Punkte gelten für **jede** Aufgabe:
   ```
   Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
   ```
+  Ab dem Commit `refactor: Aufbau des Test-Containers an einer Stelle bündeln` steht dort
+  `Claude Opus 5.5`, weil das Werkzeug das Modell gewechselt hat.
 - **Voraussetzung:** Docker läuft (Testcontainers startet echte Container).
 
 ## Reihenfolge im Überblick
@@ -61,6 +63,21 @@ S1 (`mvn clean test`) wäre damit rot, bevor eine Zeile des `batch-writer` exist
 
 **Was gebaut wird:** `annotationProcessorPaths` für Lombok im `maven-compiler-plugin`.
 
+**Schnittstellen:**
+- Verbraucht: nichts
+- Stellt bereit: Ein Build, in dem Lombok auf jedem JDK läuft (Grundlage für S1)
+
+**Ablauf:**
+- [x] Test schreiben und Fehlschlag sehen: `mvn -q clean test` → `BUILD FAILURE`, `cannot find symbol: log` im bestehenden `chat-service`
+- [x] Code schreiben, Test grün: Ganzer Lauf grün
+- [x] Committen:
+
+```bash
+git add pom.xml
+git commit -m "fix: Lombok auch mit JDK 23 und neuer ausführen" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
 ---
 
 ## Aufgabe 2: Tabelle und Modul-Gerüst
@@ -81,6 +98,21 @@ Primärschlüssel, Index `(room_id, sent_at DESC)` existiert, keine Tabelle `roo
 
 **Schnittstelle für später:** Tabelle `message`.
 
+**Schnittstellen:**
+- Verbraucht: Aufgabe 1
+- Stellt bereit: Tabelle `message` (Spalten, Primärschlüssel `id`, Index), Modul `ch.benedict.m321:batch-writer`
+
+**Ablauf:**
+- [x] Test schreiben und Fehlschlag sehen: `mvn -q -pl batch-writer test` ohne `init.sql` → 3 von 4 Tests rot (keine Spalten, kein Schlüssel, kein Index)
+- [x] Code schreiben, Test grün: 4 Tests grün
+- [x] Committen:
+
+```bash
+git add pom.xml postgres batch-writer
+git commit -m "feat: Tabelle message mit Primärschlüssel und Index anlegen" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
 ---
 
 ## Aufgabe 3: Nachricht lesen und prüfen
@@ -100,6 +132,21 @@ Primärschlüssel, Index `(room_id, sent_at DESC)` existiert, keine Tabelle `roo
 - ein unbekanntes Zusatzfeld stört nicht
 
 **Entscheidung dahinter:** Spezifikation E4, wir lesen die Bytes selbst.
+
+**Schnittstellen:**
+- Verbraucht: nichts aus früheren Aufgaben
+- Stellt bereit: `ChatMessage(UUID id, UUID roomId, String senderId, String senderName, String content, Instant sentAt)`, `MessageParser.parse(byte[])` → `ChatMessage` oder `InvalidMessageException`
+
+**Ablauf:**
+- [x] Test schreiben und Fehlschlag sehen: `-Dtest=MessageParserTest` → Übersetzungsfehler, `ChatMessage` und `MessageParser` gibt es noch nicht
+- [x] Code schreiben, Test grün: 11 Tests grün
+- [x] Committen:
+
+```bash
+git add batch-writer
+git commit -m "feat: Nachrichten aus JSON lesen und prüfen" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
 
 ---
 
@@ -126,6 +173,21 @@ testet, sieht ein Datenbankproblem nicht erst im Zusammenspiel mit RabbitMQ.
   ist ihre Zahl. Das ist sofort und genau, im Gegensatz zu `pg_stat_database`, das verzögert nachzieht.
 - schlägt eine Zeile fehl, ist **nichts** vom Stapel in der Tabelle (alles oder nichts)
 
+**Schnittstellen:**
+- Verbraucht: Tabelle `message` (Aufgabe 2), `ChatMessage` (Aufgabe 3)
+- Stellt bereit: `MessageRepository.saveAll(List<ChatMessage>)` → Zahl der neu eingefügten Zeilen, eine Transaktion pro Aufruf; `IntegrationTestBase`
+
+**Ablauf:**
+- [x] Test schreiben und Fehlschlag sehen: `-Dtest=MessageRepositoryIntegrationTest` → Übersetzungsfehler, `MessageRepository` fehlt. Nach dem Grünwerden Gegenprobe: ohne `@Transactional` waren es 4 statt 1 Schreib-Transaktion, der Test schlug an
+- [x] Code schreiben, Test grün: 8 Tests grün
+- [x] Committen:
+
+```bash
+git add batch-writer
+git commit -m "feat: Stapel in einer Transaktion in die Datenbank schreiben" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
 ---
 
 ## Aufgabe 5: Queues und Stapel-Verbraucher einrichten
@@ -145,6 +207,21 @@ weil ein Verbraucher an eine nicht vorhandene Queue gar nicht erst hängen kann 
 - `chat.persist` und `chat.dlq` existieren, nachdem der Kontext gestartet ist
 - `chat.persist` trägt `x-dead-letter-exchange` und `x-dead-letter-routing-key = chat.dlq` (gelesen mit `rabbitmqctl list_queues name arguments`, also so, wie es auch ein Mensch nachprüfen würde)
 
+**Schnittstellen:**
+- Verbraucht: nichts aus früheren Aufgaben ausser `IntegrationTestBase`
+- Stellt bereit: `QueueNames.PERSIST_QUEUE`, `QueueNames.DEAD_LETTER_QUEUE`, Beans `persistQueue`, `deadLetterQueue`, `batchContainerFactory`
+
+**Ablauf:**
+- [x] Test schreiben und Fehlschlag sehen: `-Dtest=RabbitConfigIntegrationTest` → Übersetzungsfehler, `QueueNames` fehlt
+- [x] Code schreiben, Test grün: 3 Tests grün, Modul 26
+- [x] Committen:
+
+```bash
+git add batch-writer
+git commit -m "feat: Queues deklarieren und Stapel-Verbraucher konfigurieren" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
 ---
 
 ## Aufgabe 6: Ungültige Nachrichten weglegen
@@ -157,6 +234,21 @@ weil ein Verbraucher an eine nicht vorhandene Queue gar nicht erst hängen kann 
 
 **Test (echter RabbitMQ):** Körper und Header kommen unverändert an, `x-error-reason` ist gesetzt,
 die ursprünglichen Eigenschaften (`content_type`) bleiben erhalten.
+
+**Schnittstellen:**
+- Verbraucht: `QueueNames` (Aufgabe 5)
+- Stellt bereit: `DeadLetterPublisher.publish(Message, String reason)`
+
+**Ablauf:**
+- [x] Test schreiben und Fehlschlag sehen: `-Dtest=DeadLetterPublisherIntegrationTest` → Übersetzungsfehler, `DeadLetterPublisher` fehlt
+- [x] Code schreiben, Test grün: 2 Tests grün, Modul 28
+- [x] Committen:
+
+```bash
+git add batch-writer
+git commit -m "feat: Ungültige Nachrichten in chat.dlq veröffentlichen" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
 
 ---
 
@@ -177,6 +269,21 @@ stimmt, und hier stehen die Tests zu S3, S4 und S5.
 - **S4:** Verbraucher anhalten, 1000 Nachrichten in die Queue legen, Verbraucher starten: alle 1000 in der Tabelle, und es waren höchstens 10 Schreib-Transaktionen (Spezifikation: erwartet 2)
 - ein Stapel wird nach `BATCH_TIMEOUT_MS` auch dann geschrieben, wenn er nicht voll ist (eine einzelne Nachricht)
 
+**Schnittstellen:**
+- Verbraucht: `MessageParser` (3), `MessageRepository` (4), `batchContainerFactory` (5), `DeadLetterPublisher` (6)
+- Stellt bereit: `PersistQueueListener.onBatch(List<Message>)` an `chat.persist`
+
+**Ablauf:**
+- [x] Test schreiben und Fehlschlag sehen: 5 von 5 Tests rot: `expected: <1> but was: <0>`, nichts wird gespeichert, weil noch niemand die Queue liest
+- [x] Code schreiben, Test grün: 5 Tests grün, Modul 33. Log zeigt 2 Stapel zu 500 für den Rückstand von 1000
+- [x] Committen:
+
+```bash
+git add batch-writer
+git commit -m "feat: Nachrichten aus chat.persist stapelweise speichern" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
 ---
 
 ## Aufgabe 8: Datenbankausfall überstehen
@@ -196,6 +303,21 @@ Testcontainers-Docker-Client), 5 Nachrichten gehen in die Queue. Geprüft wird:
 - nach dem Fortsetzen: alle 5 in der Tabelle, ohne dass der Verbraucher neu gestartet wurde
 - `chat.dlq` bleibt leer (Ausfall ist kein Fehler der Nachricht)
 
+**Schnittstellen:**
+- Verbraucht: `PersistQueueListener` (Aufgabe 7)
+- Stellt bereit: Verhalten bei Datenbankfehler: `RETRY_DELAY_MS` warten, Stapel zurückgeben
+
+**Ablauf:**
+- [x] Test schreiben und Fehlschlag sehen: Die Sicherheitstests waren schon grün (die Queue hält die Nachrichten auch ohne eigenen Code). Rot war der Test auf die Pause: 0 gemeldete Fehlversuche. Gegenprobe nach dem Fix: mit `RETRY_DELAY_MS=0` 23 Versuche in 5 s, der Test schlug an
+- [x] Code schreiben, Test grün: 3 Tests grün, Modul 36
+- [x] Committen:
+
+```bash
+git add batch-writer
+git commit -m "feat: Bei Datenbankausfall warten und Stapel zurückgeben" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
 ---
 
 ## Aufgabe 9: Dockerfile und docker-compose
@@ -212,6 +334,21 @@ läuft: Netzwerk, Anmeldedaten, Startreihenfolge. Davor wäre es raten.
 ohne Treffer, `\d message` in `psql` zeigt die Tabelle, 5 Nachrichten über `POST /messages` stehen nach
 wenigen Sekunden in der Tabelle. Der Dienst bleibt ohne Webserver am Leben.
 
+**Schnittstellen:**
+- Verbraucht: das lauffähige Modul aus Aufgabe 1 bis 8
+- Stellt bereit: Compose-Dienste `postgres` und `batch-writer` im Netz `chat-net`, ohne Port
+
+**Ablauf:**
+- [x] Test vorbereiten: einen roten Test vorab gab es hier nicht, denn der Stack-Test kann erst laufen, wenn es den Dienst im Stack gibt. Beim Lesen erkannt (nicht beobachtet): das `chat-service`-Dockerfile hätte das neue Modul-POM vermisst
+- [x] Code schreiben, Test grün: Stack läuft, 5 Nachrichten über `POST /messages` stehen in der Tabelle
+- [x] Committen:
+
+```bash
+git add batch-writer chat-service docker-compose.yml .env.example
+git commit -m "chore: batch-writer und postgres in docker-compose abbilden" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
 ---
 
 ## Aufgabe 10: Abnahmeskripte
@@ -227,6 +364,21 @@ Skripte kommen zuletzt, weil sie das fertige System prüfen und selbst keine Log
 Zusätzlich wird `check-code-rules.sh` an einer absichtlich verletzten Kopie geprüft: es muss `FAIL` melden,
 sonst misst es nichts.
 
+**Schnittstellen:**
+- Verbraucht: der Stack aus Aufgabe 9
+- Stellt bereit: `scripts/verify-batch-writer.sh` (S2 bis S7), `scripts/check-code-rules.sh` (S8)
+
+**Ablauf:**
+- [x] Test schreiben und Fehlschlag sehen: `check-code-rules.sh` gegen eine absichtlich verletzte Kopie → `FAIL` für Stream-Wort, Lambda, Methodenreferenz, fehlende Kommentare, `.env`
+- [x] Code schreiben, Test grün: Gegen den echten Stand: S1 bis S8 `PASS`
+- [x] Committen:
+
+```bash
+git add scripts
+git commit -m "test: Abnahmeskripte für die Szenarien S1 bis S8" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
+
 ---
 
 ## Aufgabe 11: README nachführen
@@ -237,6 +389,21 @@ sonst misst es nichts.
 testen, starten» (PostgreSQL per Testcontainers, `scripts/`), Verweise auf Spezifikation und Plan.
 
 **Test:** Die im README genannten Befehle werden einmal von oben nach unten ausgeführt.
+
+**Schnittstellen:**
+- Verbraucht: alles
+- Stellt bereit: README mit Stand, Befehlen und Verweisen
+
+**Ablauf:**
+- [x] Test vorbereiten: kein automatischer Test; geprüft wird, ob die Befehle im README stimmen. Vorher nannte das README weder `postgres` noch `batch-writer`
+- [x] Code schreiben, Test grün: Alle README-Befehle wortgleich ausgeführt, die Nachricht «Hallo README» stand in der Tabelle
+- [x] Committen:
+
+```bash
+git add README.md
+git commit -m "docs: README um batch-writer und postgres ergänzen" \
+  -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
+```
 
 ---
 
@@ -268,6 +435,23 @@ Surrogat-Zeichen.
 | Zusätzliche Testklasse `RabbitConfigTest` (Aufgabe 5, nachgeliefert im Commit zu den Einstellungen) | `BATCH_TIMEOUT_MS=0` liess den Dienst mit 100 % CPU laufen |
 | Commit `refactor: Verschachtelte Aufrufe im batch-writer auflösen` | Die Prüfung des fertigen Codes gegen `CLAUDE.md` fand im Testcode Aufrufe im Aufruf (`assertEquals(1, countRows())`) und Ketten. Verhalten unverändert, alle Tests wie vorher grün |
 | Plan-Tabelle, Aufgabe 3: Commit-Message hatte «pruefen» statt «prüfen» | Beim Ersetzen der Umlaute übersehen. Der Abgleich Plan gegen `git log` hat es gefunden |
+
+### Alle Commits nach Aufgabe 11, in dieser Reihenfolge
+
+Damit Plan und `git log` lückenlos übereinstimmen:
+
+| # | Commit-Message | Thema |
+|---|---|---|
+| 12 | `fix: Zeitpunkte ausserhalb von Jahr 1 bis 9999 in die Dead-Letter-Queue legen` | Randfall C |
+| 13 | `fix: Unsinnige Stapel-Einstellungen beim Start ablehnen` | Randfall J |
+| 14 | `docs: Spezifikation und Plan nach den Randfall-Versuchen nachführen` | Spezifikation §7, §8, dieser Nachtrag |
+| 15 | `refactor: Verschachtelte Aufrufe im batch-writer auflösen` | CLAUDE.md, ein Ergebnis pro Zeile |
+| 16 | `docs: Plan an den Git-Log angleichen und Abweichungen nachtragen` | «pruefen» → «prüfen» |
+| 17 | `refactor: Aufbau des Test-Containers an einer Stelle bündeln` | doppelten Container-Aufbau entfernt (`PostgresTestContainer`) |
+| 18 | `docs: Kommentare im batch-writer korrigieren` | Tippfehler, ein falscher Satz über den Startabbruch |
+| 19 | `docs: Durchsatz des batch-writer gemessen und Abnahme S6 präzisiert` | Spezifikation §1.1 und §8 Block M |
+| 20 | `docs: Umsetzungsplan im Aufbau des Vorbilds ergänzen` | Schnittstellen, Ablauf und Commit-Befehl je Aufgabe |
+| 21 | `docs: Abschluss-Prüfung im Plan abgehakt` | erst nach bestandener Abnahme im frischen Klon |
 
 ---
 
