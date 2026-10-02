@@ -436,22 +436,26 @@ Surrogat-Zeichen.
 | Commit `refactor: Verschachtelte Aufrufe im batch-writer auflösen` | Die Prüfung des fertigen Codes gegen `CLAUDE.md` fand im Testcode Aufrufe im Aufruf (`assertEquals(1, countRows())`) und Ketten. Verhalten unverändert, alle Tests wie vorher grün |
 | Plan-Tabelle, Aufgabe 3: Commit-Message hatte «pruefen» statt «prüfen» | Beim Ersetzen der Umlaute übersehen. Der Abgleich Plan gegen `git log` hat es gefunden |
 
-### Alle Commits nach Aufgabe 11, in dieser Reihenfolge
+### Alle Commits ab Aufgabe 10, in der Reihenfolge des Git-Logs
 
-Damit Plan und `git log` lückenlos übereinstimmen:
+Die Randfall-Versuche kamen **zwischen** Aufgabe 10 und Aufgabe 11. Damit Plan und `git log`
+lückenlos übereinstimmen, steht hier jeder Commit ab Aufgabe 10 an seiner echten Stelle:
 
-| # | Commit-Message | Thema |
+| Reihenfolge | Commit-Message | Thema |
 |---|---|---|
-| 12 | `fix: Zeitpunkte ausserhalb von Jahr 1 bis 9999 in die Dead-Letter-Queue legen` | Randfall C |
-| 13 | `fix: Unsinnige Stapel-Einstellungen beim Start ablehnen` | Randfall J |
-| 14 | `docs: Spezifikation und Plan nach den Randfall-Versuchen nachführen` | Spezifikation §7, §8, dieser Nachtrag |
-| 15 | `refactor: Verschachtelte Aufrufe im batch-writer auflösen` | CLAUDE.md, ein Ergebnis pro Zeile |
-| 16 | `docs: Plan an den Git-Log angleichen und Abweichungen nachtragen` | «pruefen» → «prüfen» |
-| 17 | `refactor: Aufbau des Test-Containers an einer Stelle bündeln` | doppelten Container-Aufbau entfernt (`PostgresTestContainer`) |
-| 18 | `docs: Kommentare im batch-writer korrigieren` | Tippfehler, ein falscher Satz über den Startabbruch |
-| 19 | `docs: Durchsatz des batch-writer gemessen und Abnahme S6 präzisiert` | Spezifikation §1.1 und §8 Block M |
-| 20 | `docs: Umsetzungsplan im Aufbau des Vorbilds ergänzen` | Schnittstellen, Ablauf und Commit-Befehl je Aufgabe |
-| 21 | `docs: Abschluss-Prüfung im Plan abgehakt` | erst nach bestandener Abnahme im frischen Klon |
+| 1 | `test: Abnahmeskripte für die Szenarien S1 bis S8` | Aufgabe 10 |
+| 2 | `fix: Zeitpunkte ausserhalb von Jahr 1 bis 9999 in die Dead-Letter-Queue legen` | Randfall C |
+| 3 | `fix: Unsinnige Stapel-Einstellungen beim Start ablehnen` | Randfall J |
+| 4 | `docs: Spezifikation und Plan nach den Randfall-Versuchen nachführen` | Spezifikation §7, §8, dieser Nachtrag |
+| 5 | `docs: README um batch-writer und postgres ergänzen` | Aufgabe 11 |
+| 6 | `refactor: Verschachtelte Aufrufe im batch-writer auflösen` | CLAUDE.md, ein Ergebnis pro Zeile |
+| 7 | `docs: Plan an den Git-Log angleichen und Abweichungen nachtragen` | «pruefen» → «prüfen» |
+| 8 | `refactor: Aufbau des Test-Containers an einer Stelle bündeln` | doppelten Container-Aufbau entfernt (`PostgresTestContainer`) |
+| 9 | `docs: Kommentare im batch-writer korrigieren` | Tippfehler, ein falscher Satz über den Startabbruch |
+| 10 | `docs: Durchsatz des batch-writer gemessen und Abnahme S6 präzisiert` | Spezifikation §1.1 und §8 Block M |
+| 11 | `docs: Umsetzungsplan im Aufbau des Vorbilds ergänzen` | Schnittstellen, Ablauf und Commit-Befehl je Aufgabe |
+| 12 | `docs: Commit-Liste im Plan nach dem Git-Log ordnen` | diese Tabelle hatte die Randfall-Commits fälschlich nach Aufgabe 11 eingereiht |
+| 13 | `docs: Abschluss-Prüfung im Plan abgehakt` | erst nach bestandener Abnahme im frischen Klon |
 
 ---
 
