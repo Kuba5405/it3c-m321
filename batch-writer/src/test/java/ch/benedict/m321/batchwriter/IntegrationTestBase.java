@@ -1,15 +1,15 @@
 package ch.benedict.m321.batchwriter;
 
+import ch.benedict.m321.batchwriter.config.QueueNames;
 import ch.benedict.m321.batchwriter.dto.ChatMessage;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageDeliveryMode;
 import org.springframework.amqp.core.MessageProperties;
-import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
-import ch.benedict.m321.batchwriter.config.QueueNames;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.util.TestPropertyValues;
@@ -17,14 +17,12 @@ import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
+import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.containers.RabbitMQContainer;
-import org.testcontainers.containers.Container.ExecResult;
-import org.testcontainers.utility.MountableFile;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -50,7 +48,7 @@ public abstract class IntegrationTestBase {
      * Gestartet wird sie von Hand im static-Block, nicht von JUnit, damit sie
      * für die ganze Testausführung am Leben bleibt.
      */
-    protected static final PostgreSQLContainer<?> POSTGRES = createPostgresContainer();
+    protected static final PostgreSQLContainer<?> POSTGRES = PostgresTestContainer.create();
 
     /**
      * Der Broker, mit Management-Plugin, damit der Test mit rabbitmqctl
@@ -75,32 +73,6 @@ public abstract class IntegrationTestBase {
     /** Das Register aller Verbraucher: damit lässt sich der Verbraucher anhalten und starten. */
     @Autowired
     protected RabbitListenerEndpointRegistry listenerRegistry;
-
-    /**
-     * Baut den Datenbank-Container Schritt für Schritt auf, noch ohne ihn zu starten.
-     *
-     * Die Zeitgrenzen sind dieselben wie in application.yml: ein hängender Server
-     * darf den Test nicht ewig festhalten.
-     */
-    private static PostgreSQLContainer<?> createPostgresContainer() {
-        PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16-alpine");
-        Path initScript = initScriptPath();
-        MountableFile initScriptFile = MountableFile.forHostPath(initScript);
-        container.withCopyFileToContainer(initScriptFile, "/docker-entrypoint-initdb.d/init.sql");
-        container.withUrlParam("connectTimeout", "5");
-        container.withUrlParam("socketTimeout", "30");
-        return container;
-    }
-
-    /**
-     * Berechnet den absoluten Pfad der init.sql, damit der Test nicht davon
-     * abhängt, von wo aus er gestartet wird.
-     */
-    private static Path initScriptPath() {
-        Path relativePath = Path.of("..", "postgres", "init.sql");
-        Path absolutePath = relativePath.toAbsolutePath();
-        return absolutePath.normalize();
-    }
 
     /**
      * Sagt dem Spring-Kontext, wo die Test-Datenbank gerade lauscht. Der

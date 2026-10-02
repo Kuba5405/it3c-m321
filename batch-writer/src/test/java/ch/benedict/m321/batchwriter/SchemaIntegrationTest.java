@@ -4,9 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-import org.testcontainers.utility.MountableFile;
 
-import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -29,33 +27,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SchemaIntegrationTest {
 
     /**
-     * Der Container bekommt die init.sql in den Ordner, den das Postgres-Image
-     * beim ersten Start ausführt. Genau das macht auch docker-compose.
-     * Der Pfad geht vom Modulordner batch-writer/ aus eine Ebene nach oben.
+     * Die Datenbank kommt aus PostgresTestContainer und hat dieselbe init.sql wie der Stack.
+     * Testcontainers startet sie vor dem ersten Test und beendet sie nach dem letzten.
      */
     @Container
-    static PostgreSQLContainer<?> postgres = createPostgresContainer();
-
-    /**
-     * Baut den Datenbank-Container Schritt für Schritt auf, noch ohne ihn zu starten.
-     */
-    private static PostgreSQLContainer<?> createPostgresContainer() {
-        PostgreSQLContainer<?> container = new PostgreSQLContainer<>("postgres:16-alpine");
-        Path initScript = initScriptPath();
-        MountableFile initScriptFile = MountableFile.forHostPath(initScript);
-        container.withCopyFileToContainer(initScriptFile, "/docker-entrypoint-initdb.d/init.sql");
-        return container;
-    }
-
-    /**
-     * Berechnet den absoluten Pfad der init.sql, damit der Test nicht davon
-     * abhängt, von wo aus Maven oder die Entwicklungsumgebung ihn startet.
-     */
-    private static Path initScriptPath() {
-        Path relativePath = Path.of("..", "postgres", "init.sql");
-        Path absolutePath = relativePath.toAbsolutePath();
-        return absolutePath.normalize();
-    }
+    static PostgreSQLContainer<?> postgres = PostgresTestContainer.create();
 
     /**
      * Alle sechs Spalten aus PLANUNG.md 3.7 sind da, in dieser Reihenfolge,
