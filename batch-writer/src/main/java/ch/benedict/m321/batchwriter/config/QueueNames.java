@@ -15,7 +15,7 @@ public final class QueueNames {
     /** Schreibweg: hier holt der batch-writer die Nachrichten ab. */
     public static final String PERSIST_QUEUE = "chat.persist";
 
-    /** Dead Letter: hier landet, was der batch-writer nicht lesen kann. */
+    /** Dead Letter: hier landet, was der batch-writer nicht speichern kann. */
     public static final String DEAD_LETTER_QUEUE = "chat.dlq";
 
     /**

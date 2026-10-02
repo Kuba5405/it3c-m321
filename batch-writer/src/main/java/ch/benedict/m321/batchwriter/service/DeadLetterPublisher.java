@@ -9,7 +9,7 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Service;
 
 /**
- * Legt Nachrichten, die wir nicht lesen können, in die Dead-Letter-Queue.
+ * Legt Nachrichten, die wir nicht speichern können, in die Dead-Letter-Queue.
  *
  * Eine kaputte Nachricht darf die gesunden im selben Stapel nicht aufhalten.
  * Würde sie den Stapel scheitern lassen, käme sie bei jeder Wiederholung

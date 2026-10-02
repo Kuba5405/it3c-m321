@@ -48,9 +48,9 @@ class RabbitConfigIntegrationTest extends IntegrationTestBase {
 
     /**
      * chat.persist trägt dieselben Argumente wie beim chat-service. Stimmen sie
-     * nicht überein, lehnt RabbitMQ die zweite Deklaration ab und ein Dienst
-     * startet nicht mehr. Gelesen wird so, wie es auch ein Mensch nachprüfen
-     * würde: mit rabbitmqctl im Container.
+     * nicht überein, lehnt RabbitMQ die zweite Deklaration ab, und der batch-writer
+     * hängt ohne Verbraucher da (gemessen, Spezifikation 3.1). Gelesen wird so, wie
+     * es auch ein Mensch nachprüfen würde: mit rabbitmqctl im Container.
      */
     @Test
     void persistQueueHasTheSameDeadLetterArgumentsAsTheChatService() throws IOException, InterruptedException {

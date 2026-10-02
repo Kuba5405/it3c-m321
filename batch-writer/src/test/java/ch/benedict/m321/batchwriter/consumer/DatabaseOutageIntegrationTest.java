@@ -46,8 +46,9 @@ class DatabaseOutageIntegrationTest extends IntegrationTestBase {
     }
 
     /**
-     * Setzt die Datenbank in jedem Fall fort, auch wenn der Test mittendrin
-     * scheitert. Sonst bliebe sie für alle folgenden Tests eingefroren.
+     * Räumt nach jedem Test auf, auch wenn er mittendrin scheitert: Datenbank
+     * auftauen, Tabellennamen zurücksetzen, Log-Mitschreiber abhängen. Sonst
+     * fänden alle folgenden Tests eine eingefrorene Datenbank oder keine Tabelle.
      */
     @AfterEach
     void resumeTheDatabaseAndStopRecording() {

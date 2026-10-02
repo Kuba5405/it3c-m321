@@ -17,7 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Das Zusammenspiel ganz durch, mit ECHTEM RabbitMQ und ECHTER Datenbank:
  * Nachricht in die Queue, Zeile in die Tabelle.
  *
- * Hier stehen die Tests zu den Szenarien S3, S4 und S5.
+ * Hier stehen die Tests zu den Szenarien S3, S4 und S5 und zu Nachrichten,
+ * die nicht gespeichert werden können.
  */
 class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
 
@@ -25,7 +26,7 @@ class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
      * Szenario S3 im Kleinen: eine Nachricht, genau wie sie der chat-service schickt,
      * landet in der Tabelle, und die Queue ist danach leer.
      *
-     * Es ist zugleich der Test für das Zeitlimit: ein einzelne Nachricht füllt keinen
+     * Es ist zugleich der Test für das Zeitlimit: eine einzelne Nachricht füllt keinen
      * Stapel von 500, wird aber nach höchstens BATCH_TIMEOUT_MS trotzdem geschrieben.
      */
     @Test

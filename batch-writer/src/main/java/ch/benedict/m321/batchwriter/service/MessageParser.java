@@ -103,6 +103,7 @@ public class MessageParser {
 
     /**
      * Der Zeitpunkt muss zwischen EARLIEST_SENT_AT und LATEST_SENT_AT liegen.
+     * Warum, steht bei den beiden Konstanten oben.
      */
     private void requireSentAtInRange(Instant sentAt) throws InvalidMessageException {
         boolean tooEarly = sentAt.isBefore(EARLIEST_SENT_AT);
@@ -113,7 +114,7 @@ public class MessageParser {
     }
 
     /**
-     * Ein Feld, das keinen Text sein muss (UUID, Zeitpunkt), darf einfach nicht fehlen.
+     * Ein Feld, das kein Text ist (UUID, Zeitpunkt), darf einfach nicht fehlen.
      */
     private void requirePresent(Object value, String fieldName) throws InvalidMessageException {
         if (value == null) {

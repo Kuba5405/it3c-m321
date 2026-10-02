@@ -97,8 +97,8 @@ class MessageParserTest {
 
     /**
      * Fehlt irgendeines der sechs Felder, ist die Nachricht ungültig.
-     * Wir probieren jedes einzeln: das Feld wird aus dem echten Körper
-     * entfernt, indem es auf null gesetzt wird.
+     * Wir probieren jedes einzeln und setzen dafür im echten Körper ein Feld
+     * auf null. Für den Parser ist das dasselbe wie ein fehlendes Feld.
      */
     @Test
     void rejectsEveryMissingField() {

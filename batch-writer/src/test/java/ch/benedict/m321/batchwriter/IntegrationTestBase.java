@@ -44,7 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public abstract class IntegrationTestBase {
 
     /**
-     * Die Datenbank bekommt dieselbe init.sql, die später im Stack läuft.
+     * Die Datenbank kommt aus PostgresTestContainer, mit derselben init.sql wie im Stack.
      * Gestartet wird sie von Hand im static-Block, nicht von JUnit, damit sie
      * für die ganze Testausführung am Leben bleibt.
      */
@@ -75,8 +75,8 @@ public abstract class IntegrationTestBase {
     protected RabbitListenerEndpointRegistry listenerRegistry;
 
     /**
-     * Sagt dem Spring-Kontext, wo die Test-Datenbank gerade lauscht. Der
-     * Container bekommt bei jedem Lauf einen anderen Port, darum lässt sich
+     * Sagt dem Spring-Kontext, wo Test-Datenbank und Test-Broker gerade lauschen.
+     * Jeder Container bekommt bei jedem Lauf einen anderen Port, darum lässt sich
      * die Adresse nicht in eine Datei schreiben.
      *
      * Absichtlich kein Lambda und kein @DynamicPropertySource: eine kleine

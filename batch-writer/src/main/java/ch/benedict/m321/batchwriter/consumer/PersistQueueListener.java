@@ -20,7 +20,7 @@ import java.util.List;
  * Der Eingang des Dienstes: bekommt Stapel aus der Queue chat.persist und
  * sorgt dafür, dass sie in der Datenbank landen.
  *
- * Diese Klasse enthält selbst keine Regeln. Sie ruft der Reihe nach auf,
+ * Diese Klasse entscheidet nicht, was gültig ist. Sie ruft der Reihe nach auf,
  * was die anderen Klassen können: lesen, schreiben, weglegen. Den
  * Ablauf kann man hier von oben nach unten vorlesen (Spezifikation 3.2).
  */
@@ -30,7 +30,7 @@ import java.util.List;
 public class PersistQueueListener {
 
     /**
-     * Eine Nachricht, die wir nicht lesen konnten, samt Grund. Nur für den
+     * Eine Nachricht, die wir nicht speichern können, samt Grund. Nur für den
      * Weg vom Prüfen zum Weglegen innerhalb dieser Klasse.
      */
     private record RejectedMessage(Message message, String reason) {
@@ -43,7 +43,7 @@ public class PersistQueueListener {
     /**
      * Wie lange wir nach einem Datenbankfehler warten, bevor der Stapel
      * zurückgelegt wird. Als Feld mit @Value statt im Konstruktor, weil
-     * Lombok den Konstruktor für die drei Klassen oben schreibt.
+     * Lombok den Konstruktor nur für die drei final-Felder oben schreibt.
      */
     @Value("${batch-writer.retry-delay-ms}")
     private long retryDelayMillis;
