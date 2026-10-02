@@ -21,6 +21,12 @@ keine Datenbank auf Dauer. Der `batch-writer` fasst die Nachrichten zu Stapeln z
 und schreibt jeden Stapel in **einer** Transaktion. Bei einem Stapel von 500 sind das
 rund 3 Transaktionen pro Sekunde statt 1'667.
 
+**Gemessen am 02.10.2026** (ein Laptop, Docker Desktop, eine Instanz, Abschnitt 8, Block M): ein
+Rückstand von 20'000 Nachrichten wurde in 40 Stapeln, also 40 Transaktionen, in 0,58 s geschrieben,
+das sind rund 35'000 Nachrichten pro Sekunde, gut das Zwanzigfache des Ziels. Unter Dauerlast mit
+2'500 Nachrichten pro Sekunde blieb die Queue nie über 292 Nachrichten. Der Engpass dieses Aufbaus
+ist der Sendeweg, nicht die Datenbank.
+
 ### 1.2 Was der Dienst bewusst nicht tut
 
 | Nicht Teil des Dienstes | Warum nicht |
@@ -300,7 +306,7 @@ Variablen aus `.env` gesetzt sind.
 | **S3** | 1000 Nachrichten über `POST /messages` | 1000 `POST /messages` aus dem Netz `chat-net` (Skript: Schleife mit `curl` in einem Container). Dann alle paar Sekunden `docker compose exec postgres psql -U $POSTGRES_USER -d $POSTGRES_DB -tAc "SELECT count(*) FROM message"` und `docker compose exec rabbitmq rabbitmqctl list_queues name messages` | Nach höchstens 60 s nach dem letzten Senden ist `count` = 1000 und `chat.persist` hat `0` Nachrichten |
 | **S4** | Schreiber weg, 1000 senden, Schreiber zurück | `docker compose stop batch-writer`, 1000 Nachrichten senden, `chat.persist` zeigt 1000. Vorher `SELECT xact_commit FROM pg_stat_database WHERE datname = current_database()` merken, `docker compose start batch-writer`, warten, wieder lesen | `count` steigt um 1000, nichts verloren. Der Zuwachs von `xact_commit` ist höchstens 100. Erwartet sind wenige Transaktionen, nämlich 2 Stapel plus die Messabfragen selbst |
 | **S5** | Dieselbe Nachricht zweimal, direkt in die Queue | Zwei Veröffentlichungen mit nur `content_type: application/json` an `chat.persist` (Skript: Management-Schnittstelle, `POST /api/exchanges/%2F/amq.default/publish`, gleiche `id`). Dann `SELECT count(*) FROM message WHERE id = '<id>'` und `rabbitmqctl list_queues name messages` | `count` = 1, `chat.dlq` hat `0` Nachrichten |
-| **S6** | Zwei Instanzen | `docker compose up -d --scale batch-writer=2`, `rabbitmqctl list_queues name consumers`, dann 1000 Nachrichten, `SELECT count(*), count(DISTINCT id) FROM message` | `consumers` = 2 für `chat.persist`. Alle Nachrichten da, `count` = `count(DISTINCT id)`, keine doppelten Zeilen |
+| **S6** | Zwei Instanzen | `docker compose up -d --scale batch-writer=2`, `rabbitmqctl list_queues name consumers`, dann 1000 Nachrichten, `SELECT count(*), count(DISTINCT id) FROM message`, dazu `docker compose logs batch-writer` | `consumers` = 2 für `chat.persist`. Alle Nachrichten da, `count` = `count(DISTINCT id)`, keine doppelten Zeilen. Beide Instanzen haben mindestens eine Zeile `Batch done` geschrieben, also beide gearbeitet |
 | **S7** | Postgres steht still | `docker compose stop postgres`, 300 Nachrichten senden, 15 s warten, `docker compose start postgres`. Dann wie bei S3 zählen. Dazu `docker compose ps batch-writer` | Nach höchstens 90 s sind alle 300 in der Tabelle. Der `batch-writer` läuft mit unveränderter Startzeit (`docker inspect -f '{{.State.StartedAt}}'`), also kein Neustart von Hand |
 | **S8** | Quelltext von `batch-writer/` hält die Regeln aus `CLAUDE.md` | `scripts/check-code-rules.sh` | Keine Streams (aus Vorsicht auch keine Lambdas) in `batch-writer/`. Über jeder Klasse und jeder Methode steht ein Kommentar. `git ls-files` listet keine `.env` |
 
@@ -345,3 +351,4 @@ wie in Abschnitt 3 beschrieben.
 | J | `BATCH_SIZE=abc`, `0`, `1`; `BATCH_TIMEOUT_MS=0` | `abc` und `0`: sauberer Startabbruch. `1`: läuft. **`BATCH_TIMEOUT_MS=0`: 100 % CPU im Leerlauf.** Behoben |
 | K | 3 Instanzen, 1000 Nachrichten plus 300 Kopien einer Nachricht gleichzeitig | bestanden: +1001 Zeilen, Log zählt 299 Duplikate, alle 3 Instanzen haben gearbeitet |
 | L | Gleiche `id` gross und klein geschrieben; `sentAt` ohne Zone, mit Offset, als Zahl | bestanden: Grossschreibung ist dasselbe Duplikat, ohne Zone geht in die Dead-Letter-Queue, Offset und Zahl werden richtig umgerechnet. Surrogat-Zeichen: siehe 7, Punkt 8 |
+| M | **Durchsatz.** (1) Writer gestoppt, 20'000 Nachrichten über `POST /messages` (16 parallele Sender im Netz `chat-net`), Writer gestartet, Dauer aus den `Batch done`-Zeilen. (2) Dieselben 20'000 bei laufendem Writer, Queue-Tiefe alle 0,3 s gelesen | (1) 40 Stapel zu 500, also 40 Transaktionen statt 20'000, in 0,58 s: **rund 35'000 Nachrichten/s**, gut das 20-Fache der 1'667/s aus PLANUNG.md. (2) Angenommen mit rund 2'500/s, grösste Queue-Tiefe 292, Stapel im Schnitt 487 gross, 41 Transaktionen, am Ende alle 20'000 in der Tabelle. Gemessen auf einem Laptop mit Docker Desktop, eine Instanz |
