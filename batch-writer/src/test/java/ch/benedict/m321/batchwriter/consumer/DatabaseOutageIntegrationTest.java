@@ -118,6 +118,37 @@ class DatabaseOutageIntegrationTest extends IntegrationTestBase {
     }
 
     /**
+     * Eine ungültige Nachricht wird weggelegt, BEVOR die Datenbank an der Reihe ist.
+     * Sie liegt also in chat.dlq, obwohl jeder Schreibversuch des Stapels scheitert.
+     *
+     * Der Verbraucher wird vorher angehalten, damit beide Nachrichten sicher im selben
+     * Stapel ankommen. Allein in einem Stapel würde die ungültige die Datenbank gar
+     * nicht erst brauchen.
+     *
+     * Der Preis dieser Reihenfolge: der gescheiterte Stapel kommt zurück, und die
+     * ungültige Nachricht wird bei jeder Wiederholung erneut weggelegt. Darum prüft
+     * der Test "mindestens eine", nicht "genau eine" (Spezifikation 3.2).
+     */
+    @Test
+    void movesAnInvalidMessageToTheDeadLetterQueueEvenWhileTheDatabaseFails() throws Exception {
+        renameTable("message", "message_away");
+        ChatMessage message = createMessage("wartet auf die Tabelle");
+        stopListener();
+        publishLikeChatService(message);
+        publishWithOnlyContentType("das ist kein JSON");
+        waitForQueueCount(QueueNames.PERSIST_QUEUE, 2);
+
+        startListener();
+        Thread.sleep(3000);
+
+        int deadLetters = queueMessageCount(QueueNames.DEAD_LETTER_QUEUE);
+        renameTable("message_away", "message");
+        assertTrue(deadLetters >= 1, "Invalid message must not wait for the database, chat.dlq has " + deadLetters);
+        waitForRows(1);
+        assertRowCount(1);
+    }
+
+    /**
      * Ein Neustart der Datenbank macht alle Verbindungen im Pool tot. Wir
      * kappen sie von aussen und schicken sofort Nachrichten: die erste
      * Verbindung, die der Pool herausgibt, ist kaputt, und der Versuch muss

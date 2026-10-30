@@ -21,7 +21,7 @@ import java.util.List;
  * sorgt dafür, dass sie in der Datenbank landen.
  *
  * Diese Klasse entscheidet nicht, was gültig ist. Sie ruft der Reihe nach auf,
- * was die anderen Klassen können: lesen, schreiben, weglegen. Den
+ * was die anderen Klassen können: lesen, weglegen, schreiben. Den
  * Ablauf kann man hier von oben nach unten vorlesen (Spezifikation 3.2).
  */
 @Component
@@ -63,9 +63,9 @@ public class PersistQueueListener {
         List<RejectedMessage> rejectedMessages = new ArrayList<>();
 
         sortIntoValidAndRejected(messages, validMessages, rejectedMessages);
+        moveRejectedToDeadLetterQueue(rejectedMessages);
 
         int inserted = writeToDatabase(validMessages);
-        moveRejectedToDeadLetterQueue(rejectedMessages);
 
         logBatch(messages.size(), inserted, validMessages.size(), rejectedMessages.size(), startNanos);
     }
@@ -125,10 +125,14 @@ public class PersistQueueListener {
     }
 
     /**
-     * Legt die ungültigen Nachrichten in chat.dlq. Das geschieht ERST NACH
-     * dem Schreiben in die Datenbank: scheitert die Datenbank, wird der
-     * Stapel wiederholt, und die kaputten Nachrichten stünden sonst bei jeder
-     * Wiederholung erneut in der Dead-Letter-Queue (Spezifikation 3.2).
+     * Legt die ungültigen Nachrichten in chat.dlq. Das geschieht VOR dem
+     * Schreiben in die Datenbank: eine ungültige Nachricht ist ungültig, egal
+     * was die Datenbank gerade tut. So wartet sie nicht auf einen Stapel, der
+     * vielleicht nie durchkommt (Spezifikation 3.2).
+     *
+     * Der Preis: scheitert danach die Datenbank, kommt der ganze Stapel zurück,
+     * und die ungültige Nachricht landet bei jeder Wiederholung noch einmal in
+     * chat.dlq. Doppelt weggelegt ist besser als verloren.
      */
     private void moveRejectedToDeadLetterQueue(List<RejectedMessage> rejectedMessages) {
         for (RejectedMessage rejected : rejectedMessages) {
