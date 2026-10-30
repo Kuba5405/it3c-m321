@@ -3,6 +3,7 @@ package ch.benedict.m321.batchwriter.consumer;
 import ch.benedict.m321.batchwriter.IntegrationTestBase;
 import ch.benedict.m321.batchwriter.config.QueueNames;
 import ch.benedict.m321.batchwriter.dto.ChatMessage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
@@ -21,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * die nicht gespeichert werden können.
  */
 class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
+
+    private boolean senderNameLimited = false;
 
     /**
      * Szenario S3 im Kleinen: eine Nachricht, genau wie sie der chat-service schickt,
@@ -211,5 +214,67 @@ class PersistQueueListenerIntegrationTest extends IntegrationTestBase {
         waitForQueueCount(QueueNames.DEAD_LETTER_QUEUE, 3);
         assertRowCount(3);
         assertQueueCount(QueueNames.DEAD_LETTER_QUEUE, 3);
+    }
+
+    /**
+     * Eine Giftnachricht: sie besteht die Prüfung, die Datenbank lehnt sie trotzdem ab.
+     * Ohne Gegenmassnahme scheitert der ganze Stapel, kommt zurück, scheitert wieder,
+     * und die Queue steht für immer still.
+     *
+     * Die bekannten Auslöser fängt schon der Parser ab. Darum bauen wir einen: die
+     * Tabelle bekommt für diesen Test eine Längengrenze beim Absendernamen, die der
+     * chat-service nicht kennt. Genau davor warnt die Spezifikation in 4.1.
+     * Erwartet: die gesunden Nachrichten stehen in der Tabelle, die zu lange liegt
+     * mit Begründung in chat.dlq, und chat.persist ist leer.
+     */
+    @Test
+    void movesAMessageTheDatabaseRefusesToTheDeadLetterQueueAndStoresTheRest() throws Exception {
+        limitSenderNameLength(20);
+        ChatMessage first = createMessage("gesund eins");
+        ChatMessage second = createMessage("gesund zwei");
+        ChatMessage template = createMessage("Name zu lang");
+        ChatMessage tooLong = new ChatMessage(template.id(), template.roomId(),
+                "anna", "Anna Maria Muster-Beispiel", template.content(), template.sentAt());
+        stopListener();
+        publishLikeChatService(first);
+        publishLikeChatService(tooLong);
+        publishLikeChatService(second);
+        waitForQueueCount(QueueNames.PERSIST_QUEUE, 3);
+
+        startListener();
+
+        waitForRows(2);
+        waitForQueueCount(QueueNames.PERSIST_QUEUE, 0);
+        waitForQueueCount(QueueNames.DEAD_LETTER_QUEUE, 1);
+        assertRowCount(2);
+        assertQueueCount(QueueNames.PERSIST_QUEUE, 0);
+        Message deadLetter = rabbitTemplate.receive(QueueNames.DEAD_LETTER_QUEUE, 5000);
+        assertNotNull(deadLetter);
+        MessageProperties deadLetterProperties = deadLetter.getMessageProperties();
+        Object reason = deadLetterProperties.getHeader("x-error-reason");
+        String reasonText = reason.toString();
+        boolean namesTheProblem = reasonText.contains("refused by database (SQL state 22001)");
+        assertTrue(namesTheProblem, reasonText);
+    }
+
+    /**
+     * Gibt der Spalte sender_name eine Längengrenze. Die Grenze kennt nur die
+     * Datenbank, nicht der Parser. resetSenderNameLength nimmt sie wieder weg.
+     */
+    private void limitSenderNameLength(int maximumLength) {
+        jdbcTemplate.execute("ALTER TABLE message ALTER COLUMN sender_name TYPE varchar(" + maximumLength + ")");
+        senderNameLimited = true;
+    }
+
+    /**
+     * Nimmt die Längengrenze nach jedem Test wieder weg, auch wenn er mittendrin
+     * scheitert. Sonst fänden alle folgenden Tests eine veränderte Tabelle.
+     */
+    @AfterEach
+    void resetSenderNameLength() {
+        if (senderNameLimited) {
+            jdbcTemplate.execute("ALTER TABLE message ALTER COLUMN sender_name TYPE varchar");
+            senderNameLimited = false;
+        }
     }
 }
