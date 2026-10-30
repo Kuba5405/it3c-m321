@@ -456,6 +456,9 @@ lückenlos übereinstimmen, steht hier jeder Commit ab Aufgabe 10 an seiner echt
 | 11 | `docs: Umsetzungsplan im Aufbau des Vorbilds ergänzen` | Schnittstellen, Ablauf und Commit-Befehl je Aufgabe |
 | 12 | `docs: Commit-Liste im Plan nach dem Git-Log ordnen` | diese Tabelle hatte die Randfall-Commits fälschlich nach Aufgabe 11 eingereiht |
 | 13 | `docs: Abschluss-Prüfung im Plan abgehakt` | erst nach bestandener Abnahme im frischen Klon |
+| 14 | `fix: Ungültige Nachrichten vor dem Schreiben in chat.dlq legen` | Rückmeldung der Lehrperson, Spezifikation E15 |
+| 15 | `fix: Von der Datenbank abgelehnte Nachrichten einzeln in chat.dlq legen` | Rückmeldung der Lehrperson, Spezifikation E14 |
+| 16 | `docs: Spezifikation und Plan nach der Rückmeldung der Lehrperson nachführen` | Spezifikation 3.2, 3.4, E13 bis E15, §7, dieser Nachtrag |
 
 ---
 
@@ -471,3 +474,32 @@ Ausgeführt am 02.10.2026 in einem frischen Klon von GitHub (Stand `9546718`), m
 - [x] `git log --oneline` liest sich wie die Tabelle oben
 - [x] Lief ein Schritt anders als geplant, steht die Abweichung **hier im Plan nachgetragen**,
       mit eigenem Commit, nicht verschwiegen
+
+---
+
+## Nachtrag: Rückmeldung der Lehrperson (30.10.2026)
+
+**Warum:** Nach der Abnahme kamen zwei Punkte zurück, beide im `PersistQueueListener`:
+
+1. Die ungültigen Nachrichten **vor** dem Schreiben in `chat.dlq` legen, nicht danach.
+2. Eine Nachricht, die die Prüfung besteht, die Datenbank aber nicht schreibt, kann die Queue
+   **vergiften**: der Stapel scheitert, kommt zurück, scheitert wieder. Die erste Fassung der
+   Spezifikation nannte das als offenen Punkt (§7, Punkt 1) und hielt die Lösung für Code auf Vorrat.
+
+**Umgesetzt**, je mit einem Test, der vorher rot war:
+
+| Punkt | Test | Commit |
+|---|---|---|
+| 1 | `DatabaseOutageIntegrationTest.movesAnInvalidMessageToTheDeadLetterQueueEvenWhileTheDatabaseFails` | `fix: Ungültige Nachrichten vor dem Schreiben in chat.dlq legen` |
+| 2 | `PersistQueueListenerIntegrationTest.movesAMessageTheDatabaseRefusesToTheDeadLetterQueueAndStoresTheRest` | `fix: Von der Datenbank abgelehnte Nachrichten einzeln in chat.dlq legen` |
+
+Für Punkt 2 gibt es heute keinen echten Auslöser mehr, der Parser fängt alle bekannten ab. Der
+Test baut darum einen: er gibt der Spalte `sender_name` für die Dauer des Tests eine Längengrenze
+(`varchar(20)`), die nur die Datenbank kennt.
+
+**Bewusst in Kauf genommen** (Spezifikation 3.2 und §7, Punkt 9): während eines Datenbankausfalls
+liegt eine ungültige Nachricht mehrfach in `chat.dlq`, einmal pro Wiederholung. Mit der alten
+Reihenfolge war es genau eine Kopie (Spezifikation §8, Block D).
+
+**Geändert hat sich auch die Log-Zeile** `Batch done`: sie zählt jetzt zusätzlich
+`refused by database`.
