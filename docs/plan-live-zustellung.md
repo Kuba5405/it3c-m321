@@ -393,3 +393,24 @@ je als eigener Commit, jeweils mit Test:
 ausserdem ein weiteres, von mir selbst eingebautes Lambda (`computeIfAbsent`), das ersetzt wurde. Die Grenze 5 s
 bleibt eine Obergrenze: ein stehender Client hält die anderen einmalig bis zu 5 s auf, danach wird er entfernt.
 
+### Eintrag 2, 13.11.2026: Zweites Code-Review
+
+**Alter Text:** Eintrag 1 und die Schritte 1 bis 10 kennen weder ein getrenntes Keep-Alive-Zeitlimit noch eine Grössengrenze
+des Replay-Puffers. Die Spezifikation nannte «Plan noch zu schreiben» und Messwerte vom Stand vor dem Review.
+
+**Neuer Text:** Ein zweites Review über alle Änderungen fand 8 Punkte. Die ersten vier wurden behoben, je mit Test:
+
+| Befund | Behoben | Commit |
+|---|---|---|
+| `connection-timeout: 5s` gilt in Tomcat auch als Keep-Alive-Zeit | Test `KeepAliveIntegrationTest` war zuerst rot («Connection reset» nach 7 s Ruhe), danach `keep-alive-timeout: 60s` | `fix: Keep-Alive-Zeit vom Schreib-Zeitlimit trennen` |
+| Replay-Puffer nur nach Anzahl begrenzt | zusätzlich 20 Millionen Zeichen Inhalt, die neueste bleibt immer. Drei neue Tests in `ReplayBufferTest` | `fix: Replay-Puffer zusätzlich nach Gesamtgrösse begrenzen` |
+| Spezifikation veraltet | Kopf, Abschnitt 5, Puffer, Zeitlimits und Messwerte nachgeführt | folgt im Commit der Messwerte |
+| Kommentar bei `deliveryExchange()` nannte das web-gateway | beschreibt jetzt die SSE-Instanzen | `docs: Kommentar zum Exchange beschreibt die SSE-Instanzen` |
+
+**Nicht behoben (bewusst):** fehlender Test für `REPLAY_FAILED`, kopierte `post()`-Hilfsmethode in drei Tests, die nur von
+Tests benutzten Methoden `contains` und `size` im `ReplayBuffer`, und der Text von Schritt 9 im Commit von Schritt 8
+(Commits lassen sich nicht ändern, ohne den Verlauf umzuschreiben).
+
+**Änderungsgrund:** Der Review fand ein reales Verhalten des Zeitlimits (Tomcat) und ein unbegrenztes Speicherwachstum.
+Der `StalledClientIntegrationTest` wartet jetzt 30 statt 20 Sekunden, weil er einmal bei 29 von 30 Nachrichten knapp scheiterte.
+
