@@ -1,6 +1,8 @@
 package ch.benedict.m321.chatservice.service;
 
 import ch.benedict.m321.chatservice.dto.ChatMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -13,7 +15,6 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -35,6 +36,7 @@ class LiveDeliveryStateTest {
 
         final List<String> receivedIds = new ArrayList<>();
         boolean failOnSend = false;
+        boolean failWithRuntimeException = false;
 
         /** Ohne Zeitlimit-Argument, im Test läuft nichts ab. */
         RecordingEmitter() {
@@ -46,6 +48,9 @@ class LiveDeliveryStateTest {
         public void send(SseEventBuilder builder) throws IOException {
             if (failOnSend) {
                 throw new IOException("client is gone");
+            }
+            if (failWithRuntimeException) {
+                throw new IllegalArgumentException("converter failed");
             }
             Set<ResponseBodyEmitter.DataWithMediaType> parts = builder.build();
             for (ResponseBodyEmitter.DataWithMediaType part : parts) {
@@ -60,6 +65,19 @@ class LiveDeliveryStateTest {
         }
     }
 
+    /** Baut den Zustand mit einem ObjectMapper, der Instant schreiben kann, wie der von Spring Boot. */
+    private LiveDeliveryState newState() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        return new LiveDeliveryState(objectMapper);
+    }
+
+    /** Die ID einer Nachricht als Text, so wie sie im Ereignis (id:) steht. */
+    private String idOf(ChatMessage message) {
+        UUID id = message.id();
+        return id.toString();
+    }
+
     /** Baut eine Testnachricht für einen Raum. */
     private ChatMessage messageIn(UUID roomId) {
         UUID id = UUID.randomUUID();
@@ -69,7 +87,7 @@ class LiveDeliveryStateTest {
     /** Eine Nachricht für Raum A erreicht genau die Verbindungen in Raum A. */
     @Test
     void deliversOnlyToConnectionsInTheSameRoom() {
-        LiveDeliveryState state = new LiveDeliveryState();
+        LiveDeliveryState state = newState();
         RecordingEmitter roomA1 = new RecordingEmitter();
         RecordingEmitter roomA2 = new RecordingEmitter();
         RecordingEmitter roomB = new RecordingEmitter();
@@ -80,15 +98,16 @@ class LiveDeliveryStateTest {
 
         state.deliver(message);
 
-        assertEquals(List.of(message.id().toString()), roomA1.receivedIds);
-        assertEquals(List.of(message.id().toString()), roomA2.receivedIds);
+        List<String> expected = List.of(idOf(message));
+        assertEquals(expected, roomA1.receivedIds);
+        assertEquals(expected, roomA2.receivedIds);
         assertTrue(roomB.receivedIds.isEmpty());
     }
 
     /** Dieselbe UUID zweimal ergibt nur ein Ereignis (4.1, Schritt 3a). */
     @Test
     void ignoresTheSameMessageDeliveredTwice() {
-        LiveDeliveryState state = new LiveDeliveryState();
+        LiveDeliveryState state = newState();
         RecordingEmitter emitter = new RecordingEmitter();
         state.subscribe(ROOM_A, null, emitter);
         ChatMessage message = messageIn(ROOM_A);
@@ -102,7 +121,7 @@ class LiveDeliveryStateTest {
     /** Mit Cursor kommt erst der Replay der späteren Nachrichten, dann live. */
     @Test
     void replaysMissedMessagesAndThenGoesLive() {
-        LiveDeliveryState state = new LiveDeliveryState();
+        LiveDeliveryState state = newState();
         ChatMessage cursor = messageIn(ROOM_A);
         ChatMessage missed1 = messageIn(ROOM_A);
         ChatMessage missed2 = messageIn(ROOM_A);
@@ -111,26 +130,28 @@ class LiveDeliveryStateTest {
         state.deliver(missed2);
         RecordingEmitter emitter = new RecordingEmitter();
 
-        boolean accepted = state.subscribe(ROOM_A, cursor.id(), emitter);
+        UUID cursorId = cursor.id();
+        SubscribeResult result = state.subscribe(ROOM_A, cursorId, emitter);
         ChatMessage live = messageIn(ROOM_A);
         state.deliver(live);
 
-        assertTrue(accepted);
-        List<String> expected = List.of(
-                missed1.id().toString(), missed2.id().toString(), live.id().toString());
+        assertEquals(SubscribeResult.SUBSCRIBED, result);
+        List<String> expected = List.of(idOf(missed1), idOf(missed2), idOf(live));
         assertEquals(expected, emitter.receivedIds);
     }
 
     /** Ein unbekannter Cursor wird gemeldet und meldet NICHTS an (Grundlage für 409). */
     @Test
     void refusesAnUnknownCursorAndDoesNotSubscribe() {
-        LiveDeliveryState state = new LiveDeliveryState();
+        LiveDeliveryState state = newState();
         RecordingEmitter emitter = new RecordingEmitter();
 
-        boolean accepted = state.subscribe(ROOM_A, UUID.randomUUID(), emitter);
-        state.deliver(messageIn(ROOM_A));
+        UUID unknownId = UUID.randomUUID();
+        SubscribeResult result = state.subscribe(ROOM_A, unknownId, emitter);
+        ChatMessage afterwards = messageIn(ROOM_A);
+        state.deliver(afterwards);
 
-        assertFalse(accepted);
+        assertEquals(SubscribeResult.UNKNOWN_CURSOR, result);
         assertTrue(emitter.receivedIds.isEmpty());
     }
 
@@ -141,7 +162,7 @@ class LiveDeliveryStateTest {
      */
     @Test
     void aFailingConnectionDoesNotStopTheOthers() {
-        LiveDeliveryState state = new LiveDeliveryState();
+        LiveDeliveryState state = newState();
         RecordingEmitter broken = new RecordingEmitter();
         RecordingEmitter healthy = new RecordingEmitter();
         ChatMessage cursor = messageIn(ROOM_A);
@@ -156,11 +177,35 @@ class LiveDeliveryStateTest {
         ChatMessage next = messageIn(ROOM_A);
         state.deliver(next);
 
-        assertEquals(List.of(message.id().toString(), next.id().toString()), healthy.receivedIds);
+        List<String> expectedIds = List.of(idOf(message), idOf(next));
+        assertEquals(expectedIds, healthy.receivedIds);
         assertTrue(broken.receivedIds.isEmpty(), "die kaputte Verbindung wurde entfernt");
         RecordingEmitter comesBack = new RecordingEmitter();
-        state.subscribe(ROOM_A, cursor.id(), comesBack);
-        assertEquals(List.of(message.id().toString(), next.id().toString()), comesBack.receivedIds);
+        UUID cursorId = cursor.id();
+        state.subscribe(ROOM_A, cursorId, comesBack);
+        assertEquals(expectedIds, comesBack.receivedIds);
+    }
+
+    /**
+     * Auch ein unerwarteter RuntimeException beim Senden (zum Beispiel aus einem
+     * Konverter) beendet nur diese Verbindung: die dahinter bekommen die Nachricht
+     * trotzdem. Vorher brach deliver() dabei ab und die übrigen Clients gingen leer aus.
+     */
+    @Test
+    void aRuntimeExceptionOnOneConnectionDoesNotStopTheOthers() {
+        LiveDeliveryState state = newState();
+        RecordingEmitter broken = new RecordingEmitter();
+        RecordingEmitter healthy = new RecordingEmitter();
+        state.subscribe(ROOM_A, null, broken);
+        state.subscribe(ROOM_A, null, healthy);
+        broken.failWithRuntimeException = true;
+        ChatMessage message = messageIn(ROOM_A);
+
+        state.deliver(message);
+
+        List<String> expected = List.of(idOf(message));
+        assertEquals(expected, healthy.receivedIds);
+        assertTrue(broken.receivedIds.isEmpty());
     }
 
     /**
@@ -172,12 +217,13 @@ class LiveDeliveryStateTest {
     @Test
     void subscribingWhileMessagesArriveLosesNothingAndRepeatsNothing() throws Exception {
         for (int round = 0; round < 1000; round++) {
-            LiveDeliveryState state = new LiveDeliveryState();
+            LiveDeliveryState state = newState();
             ChatMessage cursor = messageIn(ROOM_A);
             state.deliver(cursor);
             List<ChatMessage> all = new ArrayList<>();
             for (int i = 0; i < 200; i++) {
-                all.add(messageIn(ROOM_A));
+                ChatMessage message = messageIn(ROOM_A);
+                all.add(message);
             }
             RecordingEmitter emitter = new RecordingEmitter();
 
@@ -194,7 +240,8 @@ class LiveDeliveryStateTest {
                 /** Meldet sich irgendwann während des Verteilens an. */
                 @Override
                 public void run() {
-                    state.subscribe(ROOM_A, cursor.id(), emitter);
+                    UUID cursorId = cursor.id();
+                    state.subscribe(ROOM_A, cursorId, emitter);
                 }
             });
             sender.start();
@@ -204,7 +251,8 @@ class LiveDeliveryStateTest {
 
             List<String> expected = new ArrayList<>();
             for (ChatMessage message : all) {
-                expected.add(message.id().toString());
+                String id = idOf(message);
+                expected.add(id);
             }
             assertEquals(expected, emitter.receivedIds, "Durchlauf " + round);
         }

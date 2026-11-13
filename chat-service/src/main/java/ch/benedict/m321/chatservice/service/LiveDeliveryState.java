@@ -1,6 +1,9 @@
 package ch.benedict.m321.chatservice.service;
 
 import ch.benedict.m321.chatservice.dto.ChatMessage;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -8,8 +11,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -22,18 +26,21 @@ import java.util.UUID;
  * eintreffen und ginge verloren, oder sie käme doppelt an (Spezifikation 4.6).
  * Die Last einer Instanz (ein Consumer, wenige Clients) trägt ein Schloss
  * locker, und dafür lässt es sich in einem Satz erklären.
+ *
+ * Ein Client, der nie liest, hält das Schloss höchstens so lange, wie Tomcat
+ * auf das Schreiben wartet (server.tomcat.connection-timeout, application.yml).
  */
 @Component
 @Slf4j
+@RequiredArgsConstructor
 public class LiveDeliveryState {
 
-    /** Eine offene Verbindung: welcher Raum, und worüber wir zu ihr senden. */
-    private record Connection(UUID roomId, SseEmitter emitter) {
-    }
+    private final ObjectMapper objectMapper;
 
     private final ReplayBuffer replayBuffer = new ReplayBuffer();
 
-    private final List<Connection> connections = new ArrayList<>();
+    /** Pro Raum die offenen Verbindungen, damit eine Nachricht nur ihren Raum durchläuft. */
+    private final Map<UUID, List<SseEmitter>> emittersByRoom = new HashMap<>();
 
     /**
      * Nimmt eine Nachricht vom Broker entgegen und gibt sie an alle
@@ -41,6 +48,7 @@ public class LiveDeliveryState {
      *
      * Reihenfolge mit Absicht: erst in den Puffer, dann senden. Scheitert das
      * Senden an einem Client, kann dieser die Nachricht später nachholen.
+     * Das JSON wird EINMAL erzeugt und an alle gleich gesendet.
      */
     public synchronized void deliver(ChatMessage message) {
         boolean isNew = replayBuffer.add(message);
@@ -48,15 +56,20 @@ public class LiveDeliveryState {
             log.debug("Message {} already known, not delivered again", message.id());
             return;
         }
-        Iterator<Connection> iterator = connections.iterator();
-        while (iterator.hasNext()) {
-            Connection connection = iterator.next();
-            if (!connection.roomId().equals(message.roomId())) {
-                continue;
-            }
-            boolean sent = sendTo(connection.emitter(), message);
+        List<SseEmitter> emittersInRoom = emittersByRoom.get(message.roomId());
+        if (emittersInRoom == null) {
+            return;
+        }
+        String json = toJson(message);
+        if (json == null) {
+            return;
+        }
+        // Eine Kopie, weil ein fehlgeschlagener Client aus der echten Liste entfernt wird.
+        List<SseEmitter> snapshot = new ArrayList<>(emittersInRoom);
+        for (SseEmitter emitter : snapshot) {
+            boolean sent = sendTo(emitter, message, json);
             if (!sent) {
-                iterator.remove();
+                remove(message.roomId(), emitter);
             }
         }
     }
@@ -67,33 +80,37 @@ public class LiveDeliveryState {
      * geschieht unter demselben Schloss wie deliver, darum gibt es keine Lücke
      * und kein Doppeltes.
      *
-     * @return false, wenn der Cursor unbekannt ist (der Endpunkt antwortet dann
-     *         mit 409). Dann wurde nichts angemeldet. Sonst true.
+     * @return SUBSCRIBED, UNKNOWN_CURSOR (der Endpunkt antwortet mit 409, es wurde
+     *         nichts angemeldet) oder REPLAY_FAILED (der Client brach beim Nachholen weg)
      */
-    public synchronized boolean subscribe(UUID roomId, UUID cursorId, SseEmitter emitter) {
+    public synchronized SubscribeResult subscribe(UUID roomId, UUID cursorId, SseEmitter emitter) {
         if (cursorId != null) {
             boolean cursorKnown = replayBuffer.knowsCursor(cursorId, roomId);
             if (!cursorKnown) {
                 log.info("Cursor {} unknown for room {}, subscription refused", cursorId, roomId);
-                return false;
+                return SubscribeResult.UNKNOWN_CURSOR;
             }
             boolean replayed = replayMissedMessages(roomId, cursorId, emitter);
             if (!replayed) {
-                return true;
+                return SubscribeResult.REPLAY_FAILED;
             }
         }
-        Connection connection = new Connection(roomId, emitter);
-        connections.add(connection);
-        registerCleanup(emitter);
-        log.info("Connection subscribed to room {}, {} open", roomId, connections.size());
-        return true;
+        List<SseEmitter> emittersInRoom = emittersByRoom.computeIfAbsent(roomId, room -> new ArrayList<>());
+        emittersInRoom.add(emitter);
+        registerCleanup(roomId, emitter);
+        log.info("Connection subscribed to room {}, {} open in this room", roomId, emittersInRoom.size());
+        return SubscribeResult.SUBSCRIBED;
     }
 
     /** Sendet die verpassten Nachrichten. Gibt false zurück, wenn der Client dabei wegbricht. */
     private boolean replayMissedMessages(UUID roomId, UUID cursorId, SseEmitter emitter) {
         List<ChatMessage> missed = replayBuffer.messagesAfter(cursorId, roomId);
         for (ChatMessage message : missed) {
-            boolean sent = sendTo(emitter, message);
+            String json = toJson(message);
+            if (json == null) {
+                continue;
+            }
+            boolean sent = sendTo(emitter, message, json);
             if (!sent) {
                 return false;
             }
@@ -106,37 +123,54 @@ public class LiveDeliveryState {
      * endet, abläuft oder einen Fehler meldet. Sonst blieben tote Verbindungen
      * für immer im Speicher (Spezifikation 4.7).
      */
-    private void registerCleanup(SseEmitter emitter) {
+    private void registerCleanup(UUID roomId, SseEmitter emitter) {
         // Ein Lambda ist hier erlaubt (Spezifikation 7, Punkt 8): es ist die kürzeste lesbare Form.
-        emitter.onCompletion(() -> remove(emitter));
-        emitter.onTimeout(() -> remove(emitter));
-        emitter.onError(error -> remove(emitter));
+        emitter.onCompletion(() -> remove(roomId, emitter));
+        emitter.onTimeout(() -> remove(roomId, emitter));
+        emitter.onError(error -> remove(roomId, emitter));
     }
 
-    /** Nimmt die Verbindung aus der Liste. Wird von den drei Rückrufen aufgerufen. */
-    private synchronized void remove(SseEmitter emitter) {
-        Iterator<Connection> iterator = connections.iterator();
-        while (iterator.hasNext()) {
-            Connection connection = iterator.next();
-            if (connection.emitter() == emitter) {
-                iterator.remove();
-            }
+    /** Nimmt die Verbindung aus der Liste ihres Raums. Ein leerer Raum verschwindet ganz. */
+    private synchronized void remove(UUID roomId, SseEmitter emitter) {
+        List<SseEmitter> emittersInRoom = emittersByRoom.get(roomId);
+        if (emittersInRoom == null) {
+            return;
+        }
+        emittersInRoom.remove(emitter);
+        if (emittersInRoom.isEmpty()) {
+            emittersByRoom.remove(roomId);
+        }
+    }
+
+    /**
+     * Wandelt die Nachricht in das JSON um, das als data: hinausgeht.
+     *
+     * @return das JSON, oder null, falls die Umwandlung scheitert (dann bleibt die Nachricht im Puffer)
+     */
+    private String toJson(ChatMessage message) {
+        try {
+            return objectMapper.writeValueAsString(message);
+        } catch (JsonProcessingException exception) {
+            log.error("Message {} could not be written as JSON: {}", message.id(), exception.getClass().getSimpleName());
+            return null;
         }
     }
 
     /**
      * Schreibt eine Nachricht als ein SSE-Ereignis: id: die UUID, data: das JSON.
-     * Ein Sendefehler beendet nur diese Verbindung, nie die Zustellung an andere.
+     * JEDER Fehler beendet nur diese eine Verbindung, nie die Zustellung an andere.
+     * Auch ein unerwarteter RuntimeException (zum Beispiel aus einem Konverter) gehört
+     * dazu, sonst bekämen die übrigen Clients die Nachricht nie (siehe Review).
      *
      * @return true, wenn gesendet wurde, false bei einem Fehler
      */
-    private boolean sendTo(SseEmitter emitter, ChatMessage message) {
+    private boolean sendTo(SseEmitter emitter, ChatMessage message, String json) {
         String eventId = message.id().toString();
-        SseEmitter.SseEventBuilder event = SseEmitter.event().id(eventId).data(message, MediaType.APPLICATION_JSON);
+        SseEmitter.SseEventBuilder event = SseEmitter.event().id(eventId).data(json, MediaType.APPLICATION_JSON);
         try {
             emitter.send(event);
             return true;
-        } catch (IOException | IllegalStateException exception) {
+        } catch (IOException | RuntimeException exception) {
             log.info("Connection to room {} failed on message {}: {}",
                     message.roomId(), eventId, exception.getClass().getSimpleName());
             emitter.completeWithError(exception);

@@ -52,6 +52,12 @@ class LiveDeliveryListenerIntegrationTest {
         return new ChatMessage(id, roomId, senderId, "Anna Muster", "Hallo", Instant.now());
     }
 
+    /** Die ID einer Nachricht als Text, so wie sie im Ereignis (id:) steht. */
+    private String idOf(ChatMessage message) {
+        UUID id = message.id();
+        return id.toString();
+    }
+
     /** Veröffentlicht wie der chat-service am Fanout-Exchange. */
     private void publish(ChatMessage message) {
         rabbitTemplate.convertAndSend(QueueNames.DELIVERY_EXCHANGE, "", message);
@@ -91,7 +97,8 @@ class LiveDeliveryListenerIntegrationTest {
         publish(message);
         waitForEvents(emitter, 1);
 
-        assertEquals(List.of(message.id().toString()), emitter.receivedIds);
+        List<String> expected = List.of(idOf(message));
+        assertEquals(expected, emitter.receivedIds);
     }
 
     /**
@@ -111,7 +118,7 @@ class LiveDeliveryListenerIntegrationTest {
         publish(control);
         waitForEvents(emitter, 2);
 
-        List<String> expected = List.of(message.id().toString(), control.id().toString());
+        List<String> expected = List.of(idOf(message), idOf(control));
         assertEquals(expected, emitter.receivedIds);
     }
 
@@ -125,7 +132,8 @@ class LiveDeliveryListenerIntegrationTest {
 
         for (int i = 0; i < 50; i++) {
             ChatMessage message = messageIn(room, "anna");
-            expected.add(message.id().toString());
+            String id = idOf(message);
+            expected.add(id);
             publish(message);
         }
         waitForEvents(emitter, 50);
@@ -157,7 +165,8 @@ class LiveDeliveryListenerIntegrationTest {
         state.subscribe(room, null, broken);
         state.subscribe(room, null, healthy);
 
-        publish(messageIn(room, "anna"));
+        ChatMessage message = messageIn(room, "anna");
+        publish(message);
         waitForEvents(healthy, 1);
         String messagesInQueue = "?";
         for (int attempt = 0; attempt < 60; attempt++) {

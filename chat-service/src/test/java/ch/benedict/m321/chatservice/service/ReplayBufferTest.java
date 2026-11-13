@@ -27,89 +27,102 @@ class ReplayBufferTest {
         return new ChatMessage(id, roomId, "anna", "Anna Muster", "Hallo", now);
     }
 
+    /** Legt eine neue Nachricht in den Puffer und gibt sie zurück. */
+    private ChatMessage addMessageIn(ReplayBuffer buffer, UUID roomId) {
+        ChatMessage message = messageIn(roomId);
+        buffer.add(message);
+        return message;
+    }
+
+    /** Die ID einer Nachricht, damit Aufrufe nicht verschachtelt werden müssen. */
+    private UUID idOf(ChatMessage message) {
+        return message.id();
+    }
+
     /** Eine neue Nachricht wird gemeldet als neu und danach als bekannt. */
     @Test
     void addReportsNewMessageAsNewAndThenAsKnown() {
         ReplayBuffer buffer = new ReplayBuffer();
         ChatMessage message = messageIn(ROOM_A);
+        UUID id = idOf(message);
 
         boolean firstTime = buffer.add(message);
         boolean secondTime = buffer.add(message);
+        boolean contained = buffer.contains(id);
+        int size = buffer.size();
 
         assertTrue(firstTime);
         assertFalse(secondTime);
-        assertTrue(buffer.contains(message.id()));
-        assertEquals(1, buffer.size());
+        assertTrue(contained);
+        assertEquals(1, size);
     }
 
     /** Beim 1001. Eintrag fliegt der älteste raus, die Grösse bleibt 1000. */
     @Test
     void dropsTheOldestMessageWhenTheThousandAndFirstArrives() {
         ReplayBuffer buffer = new ReplayBuffer();
-        ChatMessage oldest = messageIn(ROOM_A);
-        buffer.add(oldest);
-        ChatMessage second = null;
-        for (int i = 1; i < ReplayBuffer.CAPACITY; i++) {
-            ChatMessage message = messageIn(ROOM_A);
-            if (i == 1) {
-                second = message;
-            }
-            buffer.add(message);
+        ChatMessage oldest = addMessageIn(buffer, ROOM_A);
+        ChatMessage second = addMessageIn(buffer, ROOM_A);
+        for (int i = 2; i < ReplayBuffer.CAPACITY; i++) {
+            addMessageIn(buffer, ROOM_A);
         }
-        assertEquals(1000, buffer.size());
-        assertTrue(buffer.contains(oldest.id()));
+        UUID oldestId = idOf(oldest);
+        UUID secondId = idOf(second);
+        int sizeWhenFull = buffer.size();
+        boolean oldestWasThere = buffer.contains(oldestId);
 
-        buffer.add(messageIn(ROOM_A));
+        addMessageIn(buffer, ROOM_A);
 
-        assertEquals(1000, buffer.size());
-        assertFalse(buffer.contains(oldest.id()));
-        assertTrue(buffer.contains(second.id()));
+        int sizeAfter = buffer.size();
+        boolean oldestStillThere = buffer.contains(oldestId);
+        boolean secondStillThere = buffer.contains(secondId);
+        assertEquals(1000, sizeWhenFull);
+        assertTrue(oldestWasThere);
+        assertEquals(1000, sizeAfter);
+        assertFalse(oldestStillThere);
+        assertTrue(secondStillThere);
     }
 
     /** Nach dem Cursor kommt nur, was später eintraf, in Reihenfolge, ohne den Cursor selbst. */
     @Test
     void messagesAfterReturnsOnlyLaterMessagesInOrder() {
         ReplayBuffer buffer = new ReplayBuffer();
-        ChatMessage cursor = messageIn(ROOM_A);
-        ChatMessage later1 = messageIn(ROOM_A);
-        ChatMessage later2 = messageIn(ROOM_A);
-        buffer.add(messageIn(ROOM_A));
-        buffer.add(cursor);
-        buffer.add(later1);
-        buffer.add(later2);
+        addMessageIn(buffer, ROOM_A);
+        ChatMessage cursor = addMessageIn(buffer, ROOM_A);
+        ChatMessage later1 = addMessageIn(buffer, ROOM_A);
+        ChatMessage later2 = addMessageIn(buffer, ROOM_A);
+        UUID cursorId = idOf(cursor);
 
-        List<ChatMessage> result = buffer.messagesAfter(cursor.id(), ROOM_A);
+        List<ChatMessage> result = buffer.messagesAfter(cursorId, ROOM_A);
 
         assertEquals(2, result.size());
-        assertEquals(later1.id(), result.get(0).id());
-        assertEquals(later2.id(), result.get(1).id());
+        assertEquals(later1, result.get(0));
+        assertEquals(later2, result.get(1));
     }
 
     /** Nachrichten anderer Räume gehören nicht in den Replay. */
     @Test
     void messagesAfterSkipsMessagesOfOtherRooms() {
         ReplayBuffer buffer = new ReplayBuffer();
-        ChatMessage cursor = messageIn(ROOM_A);
-        ChatMessage otherRoom = messageIn(ROOM_B);
-        ChatMessage sameRoom = messageIn(ROOM_A);
-        buffer.add(cursor);
-        buffer.add(otherRoom);
-        buffer.add(sameRoom);
+        ChatMessage cursor = addMessageIn(buffer, ROOM_A);
+        addMessageIn(buffer, ROOM_B);
+        ChatMessage sameRoom = addMessageIn(buffer, ROOM_A);
+        UUID cursorId = idOf(cursor);
 
-        List<ChatMessage> result = buffer.messagesAfter(cursor.id(), ROOM_A);
+        List<ChatMessage> result = buffer.messagesAfter(cursorId, ROOM_A);
 
         assertEquals(1, result.size());
-        assertEquals(sameRoom.id(), result.get(0).id());
+        assertEquals(sameRoom, result.get(0));
     }
 
     /** Ein Cursor aus dem Puffer und im richtigen Raum ist gültig. */
     @Test
     void knowsACursorInTheRequestedRoom() {
         ReplayBuffer buffer = new ReplayBuffer();
-        ChatMessage cursor = messageIn(ROOM_A);
-        buffer.add(cursor);
+        ChatMessage cursor = addMessageIn(buffer, ROOM_A);
+        UUID cursorId = idOf(cursor);
 
-        boolean known = buffer.knowsCursor(cursor.id(), ROOM_A);
+        boolean known = buffer.knowsCursor(cursorId, ROOM_A);
 
         assertTrue(known);
     }
@@ -118,17 +131,18 @@ class ReplayBufferTest {
     @Test
     void doesNotKnowUnknownEvictedOrForeignRoomCursors() {
         ReplayBuffer buffer = new ReplayBuffer();
-        ChatMessage evicted = messageIn(ROOM_A);
-        buffer.add(evicted);
+        ChatMessage evicted = addMessageIn(buffer, ROOM_A);
         for (int i = 0; i < ReplayBuffer.CAPACITY; i++) {
-            buffer.add(messageIn(ROOM_A));
+            addMessageIn(buffer, ROOM_A);
         }
-        ChatMessage inRoomA = messageIn(ROOM_A);
-        buffer.add(inRoomA);
+        ChatMessage inRoomA = addMessageIn(buffer, ROOM_A);
+        UUID unknownId = UUID.randomUUID();
+        UUID evictedId = idOf(evicted);
+        UUID inRoomAId = idOf(inRoomA);
 
-        boolean unknown = buffer.knowsCursor(UUID.randomUUID(), ROOM_A);
-        boolean evictedKnown = buffer.knowsCursor(evicted.id(), ROOM_A);
-        boolean foreignRoom = buffer.knowsCursor(inRoomA.id(), ROOM_B);
+        boolean unknown = buffer.knowsCursor(unknownId, ROOM_A);
+        boolean evictedKnown = buffer.knowsCursor(evictedId, ROOM_A);
+        boolean foreignRoom = buffer.knowsCursor(inRoomAId, ROOM_B);
 
         assertFalse(unknown);
         assertFalse(evictedKnown);

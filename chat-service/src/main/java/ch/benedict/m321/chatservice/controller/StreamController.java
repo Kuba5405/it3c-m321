@@ -1,6 +1,7 @@
 package ch.benedict.m321.chatservice.controller;
 
 import ch.benedict.m321.chatservice.service.LiveDeliveryState;
+import ch.benedict.m321.chatservice.service.SubscribeResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,8 +53,8 @@ public class StreamController {
         SseEmitter emitter = new SseEmitter(TIMEOUT_IN_MILLISECONDS);
         announceConnection(emitter);
 
-        boolean accepted = liveDeliveryState.subscribe(roomId, cursorId, emitter);
-        if (!accepted) {
+        SubscribeResult result = liveDeliveryState.subscribe(roomId, cursorId, emitter);
+        if (result == SubscribeResult.UNKNOWN_CURSOR) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Last-Event-ID unbekannt, bitte ohne Cursor neu verbinden");
         }
         return emitter;
