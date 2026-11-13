@@ -221,7 +221,13 @@ Er ist Teil D der Bewertung.
 
 **Test:** `TwoInstancesIntegrationTest`.
 
-**Geprüft und korrigiert:** _(nach dem Schritt ausfüllen)_
+**Geprüft und korrigiert:** Es gab keinen Produktivcode zu schreiben: der Test war gegen den Stand aus Schritt 1 bis 5
+sofort grün. Das ist **kein** Beweis, dass er etwas prüft. Darum zuerst gegen einen absichtlich kaputten Stand (eine
+gemeinsame, nicht exklusive Queue statt einer pro Instanz, danach zurückgesetzt): rot, jeder Client bekam 20 statt 40.
+Zwei Korrekturen am Vorschlag der KI: (1) Der erste Lauf scheiterte mit «Port 8080 already in use» und «Connection
+refused», weil `SpringApplicationBuilder.properties()` hinter `application.yml` zurückstehen. Port und Broker kommen
+jetzt als Kommandozeilen-Argumente. (2) Der erste Lauf gegen den kaputten Stand war wegen dieses Fehlers rot, aus dem
+falschen Grund. Erst nach der Korrektur zeigte er die richtige Ursache. Danach alle 46 Tests des `chat-service` grün.
 
 ---
 
