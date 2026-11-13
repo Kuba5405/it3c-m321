@@ -7,8 +7,9 @@
 #   2. Über jeder Klasse und jeder Methode steht ein Kommentar.
 #   3. Keine .env im Repository.
 #
-# Aufruf:   scripts/check-code-rules.sh                prüft batch-writer/ (strenge Regel)
-#           scripts/check-code-rules.sh chat-service   prüft chat-service/ (Regel aus dem Auftrag, S8)
+# Aufruf:   scripts/check-code-rules.sh                       batch-writer/ mit der strengen Regel (wie bisher)
+#           scripts/check-code-rules.sh chat-service           chat-service/ mit der Regel aus dem Auftrag (S8)
+#           scripts/check-code-rules.sh <ordner> --strict      jeden Ordner mit der strengen Regel
 #
 # Das Skript ist eine Näherung mit regulären Ausdrücken, kein Java-Parser.
 # Darum ist es bewusst streng: im Zweifel meldet es eine Stelle zu viel.
@@ -20,7 +21,23 @@
 set -u
 cd "$(dirname "$0")/.."
 
-DIRECTORY="${1:-batch-writer}"
+# Ohne jedes Argument gilt wie bisher: batch-writer, streng. Sonst wählt man die Regel
+# mit --strict AUSDRÜCKLICH, nicht über den Ordnernamen.
+STRICT=0
+DIRECTORY=""
+for argument in "$@"; do
+    if [ "$argument" = "--strict" ]; then
+        STRICT=1
+    else
+        DIRECTORY="$argument"
+    fi
+done
+if [ "$#" -eq 0 ]; then
+    STRICT=1
+fi
+if [ -z "$DIRECTORY" ]; then
+    DIRECTORY="batch-writer"
+fi
 FAILURES=0
 
 # Meldet ein bestandenes Kriterium.
@@ -36,8 +53,8 @@ fail() {
 
 # ------------------------------------------------------- 1. Streams und Lambdas
 
-if [ "$DIRECTORY" = "batch-writer" ]; then
-    # Strenge Regel des batch-writer: das Wort "stream" kommt nirgends im Ordner vor, in keiner
+if [ "$STRICT" -eq 1 ]; then
+    # Strenge Regel (batch-writer): das Wort "stream" kommt nirgends im Ordner vor, in keiner
     # Schreibweise und in keiner Dateiart. Das ist strenger als nötig, aber so lässt sich nichts übersehen.
     stream_hits=$(grep -rniI "stream" --exclude-dir=target "$DIRECTORY" 2>/dev/null)
     # Pfeil und Methodenreferenz sind die Zeichen von Lambdas.
@@ -47,8 +64,10 @@ else
     # In einem Dienst mit Server-Sent Events kommt "text/event-stream" legitim vor.
     stream_hits=$(grep -rnE -e '\.stream\(' -e 'parallelStream' -e 'java\.util\.stream' --include='*.java' --exclude-dir=target "$DIRECTORY" 2>/dev/null)
     # Lambdas sind nur an den drei Rückrufen des SseEmitter erlaubt (Spezifikation 7, Punkt 8).
+    # Die Zeile muss mit dem Aufruf BEGINNEN, ein beliebiges Lambda in einer Zeile, die nur
+    # irgendwo ".onError(" enthält, reicht nicht.
     all_lambda_hits=$(grep -rnE -e '->' -e '::' --include='*.java' --exclude-dir=target "$DIRECTORY" 2>/dev/null)
-    lambda_hits=$(echo "$all_lambda_hits" | grep -vE '\.(onCompletion|onTimeout|onError)\(' | sed '/^$/d')
+    lambda_hits=$(echo "$all_lambda_hits" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*[A-Za-z_]+\.(onCompletion|onTimeout|onError)\(' | sed '/^$/d')
 fi
 
 if [ -z "$stream_hits" ]; then
