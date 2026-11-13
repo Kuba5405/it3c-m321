@@ -57,6 +57,9 @@ public class StreamController {
         if (result == SubscribeResult.UNKNOWN_CURSOR) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Last-Event-ID unbekannt, bitte ohne Cursor neu verbinden");
         }
+        // SUBSCRIBED: die Verbindung läuft weiter. REPLAY_FAILED: der Client ist beim
+        // Nachholen weggebrochen, sendTo hat die Verbindung schon beendet. In beiden
+        // Fällen bleibt hier nichts zu tun, der Emitter geht an Spring zurück.
         return emitter;
     }
 

@@ -156,6 +156,30 @@ class LiveDeliveryStateTest {
     }
 
     /**
+     * Bricht der Client schon beim Nachholen weg, meldet subscribe REPLAY_FAILED
+     * und trägt die Verbindung NICHT ein: spätere Nachrichten gehen nicht mehr an sie.
+     */
+    @Test
+    void aClientThatFailsDuringReplayIsNotSubscribed() {
+        LiveDeliveryState state = newState();
+        ChatMessage cursor = messageIn(ROOM_A);
+        ChatMessage missed = messageIn(ROOM_A);
+        state.deliver(cursor);
+        state.deliver(missed);
+        RecordingEmitter emitter = new RecordingEmitter();
+        emitter.failOnSend = true;
+
+        UUID cursorId = cursor.id();
+        SubscribeResult result = state.subscribe(ROOM_A, cursorId, emitter);
+        emitter.failOnSend = false;
+        ChatMessage afterwards = messageIn(ROOM_A);
+        state.deliver(afterwards);
+
+        assertEquals(SubscribeResult.REPLAY_FAILED, result);
+        assertTrue(emitter.receivedIds.isEmpty(), "die Verbindung wurde nicht angemeldet");
+    }
+
+    /**
      * Eine Verbindung, die beim Senden wirft, wird entfernt. Die andere
      * bekommt die Nachricht trotzdem, und sie steht im Puffer, damit der
      * kaputte Client sie später nachholen kann (4.7).
