@@ -134,7 +134,13 @@ Doppeltes. Ohne Broker und ohne HTTP lässt es sich am genauesten testen.
 
 **Test:** `LiveDeliveryStateTest`. **Zuerst rot**, dann grün.
 
-**Geprüft und korrigiert:** _(nach dem Schritt ausfüllen)_
+**Geprüft und korrigiert:** Test lief zuerst rot (Übersetzungsfehler, `LiveDeliveryState` fehlte). Danach liefen 4 von
+6 Tests rot, weil der Test-Emitter die ID falsch auslas: der Text lautet `id:<uuid>\ndata:`, der Test las bis zum
+Ende statt bis zum Zeilenumbruch. **Fehler im Test, nicht im Code**, im Test korrigiert. Danach 6 Tests grün, auch die
+1000 Durchläufe mit zwei Threads. Am Code gelesen und für richtig befunden: ein `synchronized`-Schloss für `deliver`,
+`subscribe` und das Entfernen; erst in den Puffer, dann senden; Sendefehler entfernt nur die eine Verbindung. Lambdas
+nur in `registerCleanup` bei `onCompletion`, `onTimeout`, `onError`. Bekannte Grenze: `send` blockiert unter dem
+Schloss (Spezifikation 7, Punkt 1).
 
 ---
 
