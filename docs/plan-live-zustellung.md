@@ -105,7 +105,11 @@ bekannt?» und «Was kam nach dem Cursor?» müssen beantwortet sein, bevor etwa
 
 **Test:** `ReplayBufferTest`. **Zuerst rot**, dann grün.
 
-**Geprüft und korrigiert:** _(nach dem Schritt ausfüllen)_
+**Geprüft und korrigiert:** Test lief zuerst rot (Übersetzungsfehler, `ReplayBuffer` fehlte), danach 6 Tests grün.
+Am Vorschlag nichts geändert. Gelesen und für richtig befunden: `LinkedHashMap` (Reihenfolge und schneller Nachschlag),
+`add` meldet `false` bei bekannter UUID, ältester Eintrag wird über den Iterator entfernt, keine Streams.
+Eine Eigenheit bewusst belassen: `messagesAfter` liefert bei unbekanntem Cursor eine leere Liste. Den Unterschied
+zu «nichts verpasst» macht `knowsCursor`, das der Endpunkt vorher fragt (409).
 
 ---
 
