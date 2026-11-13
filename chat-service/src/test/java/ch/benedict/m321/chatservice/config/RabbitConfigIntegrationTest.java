@@ -5,7 +5,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -40,9 +39,6 @@ class RabbitConfigIntegrationTest {
 
     @Autowired
     private RabbitAdmin rabbitAdmin;
-
-    @Autowired
-    private RabbitTemplate rabbitTemplate;
 
     @Autowired
     private ConnectionFactory connectionFactory;
@@ -160,38 +156,6 @@ class RabbitConfigIntegrationTest {
 
         String expected = QueueNames.DELIVERY_EXCHANGE + "\t" + queueName + "\tqueue";
         assertTrue(bindings.contains(expected), bindings);
-    }
-
-    /** Eine am Exchange veröffentlichte Nachricht muss in der Instanzqueue landen. */
-    @Test
-    void messageSentToTheExchangeArrivesInTheLiveQueue() throws Exception {
-        String line = findLiveQueueLine();
-        assertNotNull(line);
-        String queueName = queueNameOf(line);
-
-        rabbitTemplate.convertAndSend(QueueNames.DELIVERY_EXCHANGE, "", "hallo");
-
-        int messageCount = waitForMessageCount(queueName, 1);
-        assertEquals(1, messageCount);
-    }
-
-    /**
-     * Das Senden ist asynchron: convertAndSend kehrt zurück, bevor der Broker
-     * die Nachricht eingereiht hat. Darum fragen wir bis zu 3 Sekunden nach,
-     * statt einmal zu früh.
-     */
-    private int waitForMessageCount(String queueName, int expected) throws InterruptedException {
-        int messageCount = 0;
-        for (int attempt = 0; attempt < 60; attempt++) {
-            Properties properties = rabbitAdmin.getQueueProperties(queueName);
-            Object countAsObject = properties.get(RabbitAdmin.QUEUE_MESSAGE_COUNT);
-            messageCount = (Integer) countAsObject;
-            if (messageCount >= expected) {
-                return messageCount;
-            }
-            Thread.sleep(50);
-        }
-        return messageCount;
     }
 
     /**

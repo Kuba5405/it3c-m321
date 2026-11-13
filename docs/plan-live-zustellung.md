@@ -161,7 +161,13 @@ wird nach der Übergabe, ein Clientfehler führt nicht zu Requeue.
 
 **Test:** `LiveDeliveryListenerIntegrationTest`. **Zuerst rot**, dann grün.
 
-**Geprüft und korrigiert:** _(nach dem Schritt ausfüllen)_
+**Geprüft und korrigiert:** Test lief zuerst rot (alle 5, `consumers` = 0, kein Ereignis). Danach alle 5 grün, am
+Listener nichts geändert. Gelesen und für richtig befunden: genau ein Consumer (Spring-Standard), ACK nach dem Ende der
+Methode, `#{liveQueue.name}` liest den Namen aus der Bean. **Nebenwirkung auf Schritt 1:** der dortige Test
+`messageSentToTheExchangeArrivesInTheLiveQueue` ging rot, weil der Listener die Nachricht jetzt aus der Queue holt.
+Seine Aussage deckt `messagePublishedToTheExchangeReachesTheConnection` ab, darum habe ich ihn samt Hilfsmethode
+entfernt. Damit ist S2 («Queue vor der ersten Nachricht, ein Consumer») ohne `initialize()` geprüft
+(`liveQueueHasExactlyOneConsumer`). Alle 37 Tests des `chat-service` grün.
 
 ---
 
