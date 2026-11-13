@@ -25,6 +25,10 @@ server:
     # bricht Tomcat das Schreiben ab, die Verbindung wird entfernt (gemessen am
     # 13.11.2026: ohne diese Zeile hing der gesunde Client über 40 s fest).
     connection-timeout: 5s
+    # connection-timeout gilt in Tomcat auch als Keep-Alive-Zeit. Ohne diese Zeile würde
+    # eine ruhige Verbindung des Gateways nach 5 s gekappt und der nächste POST scheitern
+    # (gemessen: «Connection reset» nach 7 s Ruhe, siehe KeepAliveIntegrationTest).
+    keep-alive-timeout: 60s
 
 logging:
   level:

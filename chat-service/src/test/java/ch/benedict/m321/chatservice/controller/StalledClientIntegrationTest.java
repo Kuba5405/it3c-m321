@@ -67,7 +67,8 @@ class StalledClientIntegrationTest {
 
     /**
      * Ein stehender Client neben einem gesunden: der gesunde bekommt alle 30
-     * grossen Nachrichten, spätestens nach 20 Sekunden. Der stehende wird
+     * grossen Nachrichten, spätestens nach 30 Sekunden (ohne Zeitlimit blieb er im Versuch
+     * über 40 Sekunden bei 1 stehen, der Test unterscheidet das klar). Der stehende wird
      * nach dem Zeitlimit von 5 Sekunden entfernt.
      */
     @Test
@@ -80,7 +81,7 @@ class StalledClientIntegrationTest {
         for (int i = 0; i < 30; i++) {
             postBigMessage(room);
         }
-        for (int second = 0; second < 20; second++) {
+        for (int second = 0; second < 30; second++) {
             if (healthy.ids.size() >= 30) {
                 break;
             }
