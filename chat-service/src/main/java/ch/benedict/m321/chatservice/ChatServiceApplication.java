@@ -13,6 +13,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class ChatServiceApplication {
 
+    /** Startet den chat-service. Spring Boot baut hier alle Beans zusammen und öffnet den Webserver. */
     public static void main(String[] args) {
         SpringApplication.run(ChatServiceApplication.class, args);
     }

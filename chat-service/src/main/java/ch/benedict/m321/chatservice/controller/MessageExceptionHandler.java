@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @Slf4j
 public class MessageExceptionHandler {
 
+    /** Wird aufgerufen, sobald das Senden an den Broker scheitert, und übersetzt den Fehler in 503. */
     @ExceptionHandler(AmqpException.class)
     public ResponseEntity<String> handleBrokerNotAvailable(AmqpException exception) {
         log.error("Broker not reachable, message rejected", exception);

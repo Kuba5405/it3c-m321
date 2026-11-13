@@ -2,12 +2,13 @@
 #
 # Prüft Szenario S8: hält der Quelltext die Regeln aus CLAUDE.md?
 #
-#   1. Keine Streams und keine Lambdas.
+#   1. Keine Streams. Im batch-writer zusätzlich keine Lambdas und kein Wort "stream";
+#      im chat-service sind Lambdas nur bei onCompletion/onTimeout/onError erlaubt.
 #   2. Über jeder Klasse und jeder Methode steht ein Kommentar.
 #   3. Keine .env im Repository.
 #
-# Aufruf:   scripts/check-code-rules.sh             prüft batch-writer/
-#           scripts/check-code-rules.sh <ordner>    prüft einen anderen Ordner
+# Aufruf:   scripts/check-code-rules.sh                prüft batch-writer/ (strenge Regel)
+#           scripts/check-code-rules.sh chat-service   prüft chat-service/ (Regel aus dem Auftrag, S8)
 #
 # Das Skript ist eine Näherung mit regulären Ausdrücken, kein Java-Parser.
 # Darum ist es bewusst streng: im Zweifel meldet es eine Stelle zu viel.
@@ -35,20 +36,30 @@ fail() {
 
 # ------------------------------------------------------- 1. Streams und Lambdas
 
-# Das Wort "stream" kommt nirgends im Ordner vor, in keiner Schreibweise und in keiner Dateiart.
-# Das ist strenger als nötig, aber so lässt sich nichts übersehen.
-stream_hits=$(grep -rniI "stream" --exclude-dir=target "$DIRECTORY" 2>/dev/null)
-if [ -z "$stream_hits" ]; then
-    pass "Kein Wort 'stream' in $DIRECTORY"
+if [ "$DIRECTORY" = "batch-writer" ]; then
+    # Strenge Regel des batch-writer: das Wort "stream" kommt nirgends im Ordner vor, in keiner
+    # Schreibweise und in keiner Dateiart. Das ist strenger als nötig, aber so lässt sich nichts übersehen.
+    stream_hits=$(grep -rniI "stream" --exclude-dir=target "$DIRECTORY" 2>/dev/null)
+    # Pfeil und Methodenreferenz sind die Zeichen von Lambdas.
+    lambda_hits=$(grep -rnE -e '->' -e '::' --include='*.java' --exclude-dir=target "$DIRECTORY" 2>/dev/null)
 else
-    fail "Das Wort 'stream' kommt vor:"
+    # Regel für alle anderen Ordner (chat-service, Szenario S8): verboten sind Streams, nicht das Wort.
+    # In einem Dienst mit Server-Sent Events kommt "text/event-stream" legitim vor.
+    stream_hits=$(grep -rnE -e '\.stream\(' -e 'parallelStream' -e 'java\.util\.stream' --include='*.java' --exclude-dir=target "$DIRECTORY" 2>/dev/null)
+    # Lambdas sind nur an den drei Rückrufen des SseEmitter erlaubt (Spezifikation 7, Punkt 8).
+    all_lambda_hits=$(grep -rnE -e '->' -e '::' --include='*.java' --exclude-dir=target "$DIRECTORY" 2>/dev/null)
+    lambda_hits=$(echo "$all_lambda_hits" | grep -vE '\.(onCompletion|onTimeout|onError)\(' | sed '/^$/d')
+fi
+
+if [ -z "$stream_hits" ]; then
+    pass "Keine Streams in $DIRECTORY"
+else
+    fail "Streams gefunden:"
     echo "$stream_hits" | sed 's/^/        /'
 fi
 
-# Pfeil und Methodenreferenz sind die Zeichen von Lambdas.
-lambda_hits=$(grep -rnE -e '->' -e '::' --include='*.java' --exclude-dir=target "$DIRECTORY" 2>/dev/null)
 if [ -z "$lambda_hits" ]; then
-    pass "Keine Lambdas und keine Methodenreferenzen in $DIRECTORY"
+    pass "Keine unerlaubten Lambdas und Methodenreferenzen in $DIRECTORY"
 else
     fail "Lambda oder Methodenreferenz gefunden:"
     echo "$lambda_hits" | sed 's/^/        /'

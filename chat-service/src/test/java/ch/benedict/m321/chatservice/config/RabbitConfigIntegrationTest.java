@@ -49,6 +49,7 @@ class RabbitConfigIntegrationTest {
     /** Präfix, an dem wir die Instanzqueue unter allen Queues des Brokers erkennen. */
     private static final String LIVE_QUEUE_PREFIX = "chat.live.";
 
+    /** Die Queue des Schreibwegs muss nach dem Start im Broker existieren. */
     @Test
     void declaresPersistQueue() {
         Properties properties = rabbitAdmin.getQueueProperties(QueueNames.PERSIST_QUEUE);
@@ -56,6 +57,7 @@ class RabbitConfigIntegrationTest {
         assertNotNull(properties);
     }
 
+    /** Die Dead-Letter-Queue muss nach dem Start im Broker existieren. */
     @Test
     void declaresDeadLetterQueue() {
         Properties properties = rabbitAdmin.getQueueProperties(QueueNames.DEAD_LETTER_QUEUE);

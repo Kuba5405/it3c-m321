@@ -249,7 +249,14 @@ Verhalten für `batch-writer` bleibt unverändert.
 
 **Test:** die drei Läufe aus dem Auftrag.
 
-**Geprüft und korrigiert:** _(nach dem Schritt ausfüllen)_
+**Geprüft und korrigiert:** Vorher gezeigt: `scripts/check-code-rules.sh chat-service` meldet `FAIL` für das Wort
+«stream» (`text/event-stream`, `StreamController`), für die drei Lambdas und für Kommentare. **Der Auftrag der KI
+war zu eng gefasst:** er sah nur Streams und Lambdas vor. Der Lauf zeigte, dass auch **14 ältere Methoden aus
+Bewertung 1** (Hauptklasse, Fehlerbehandlung, alte Tests) keinen Kommentar hatten, und S8 verlangt ihn über jeder
+Methode des `chat-service`. Ich habe sie ergänzt. Zwei Fehlgriffe der KI korrigiert: die Liste der Kommentare war
+unvollständig (drei Tests in `MessageServiceTest` und eine Hilfsmethode `publish` fehlten, der erste Lauf brach mit
+`KeyError` ab). Ergebnis: `chat-service` und `batch-writer` beide `PASS`, ein absichtliches `l.stream()` in
+`chat-service` meldet `FAIL` (danach gelöscht). Die Tests laufen noch (nur Kommentare geändert, übersetzt).
 
 ---
 

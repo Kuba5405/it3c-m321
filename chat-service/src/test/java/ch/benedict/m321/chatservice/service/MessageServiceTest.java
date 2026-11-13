@@ -32,6 +32,7 @@ class MessageServiceTest {
             super(null);
         }
 
+        /** Merkt sich die Nachricht und zählt mit, statt sie an einen Broker zu senden. */
         @Override
         public void publish(ChatMessage message) {
             this.published = message;
@@ -39,6 +40,7 @@ class MessageServiceTest {
         }
     }
 
+    /** Der Server vergibt ID und Zeitpunkt, nie der Client. */
     @Test
     void assignsIdAndTimestamp() {
         RecordingPublisher publisher = new RecordingPublisher();
@@ -53,6 +55,7 @@ class MessageServiceTest {
         assertNotNull(response.sentAt());
     }
 
+    /** Die Nachricht wird genau einmal veröffentlicht, mit der ID, die der Aufrufer zurückbekommt. */
     @Test
     void publishesExactlyOnceWithTheSameId() {
         RecordingPublisher publisher = new RecordingPublisher();
@@ -70,6 +73,7 @@ class MessageServiceTest {
         assertEquals("Hallo", publisher.published.content());
     }
 
+    /** Zwei Nachrichten bekommen nie dieselbe ID. */
     @Test
     void assignsADifferentIdEveryTime() {
         RecordingPublisher publisher = new RecordingPublisher();
