@@ -79,7 +79,11 @@ S4 und S6. Falsch deklariert, merkt man es sonst erst bei einer hängenden Insta
 
 **Test:** `RabbitConfigIntegrationTest` (erweitert). **Zuerst rot**, dann grün.
 
-**Geprüft und korrigiert:** _(nach dem Schritt ausfüllen: was habe ich am Vorschlag der KI geändert und warum)_
+**Geprüft und korrigiert:** Test lief zuerst rot (7 von 9 Tests, Heartbeat war 60 statt 5). Zwei Korrekturen am
+Test selbst: (1) Spring deklariert die Queue erst bei der ersten Verbindung, beim Start öffnet noch nichts eine, darum
+holt `rabbitAdmin.initialize()` das bis zum Listener (Schritt 4) nach; S2 («Queue vor der ersten Nachricht») ist damit
+erst in Schritt 4 echt prüfbar. (2) Das Senden ist asynchron, der Test fragt bis zu 3 s nach, statt einmal zu früh.
+Am Code nichts geändert. Nach dem Schritt: alle 21 Tests des `chat-service` grün.
 
 ---
 

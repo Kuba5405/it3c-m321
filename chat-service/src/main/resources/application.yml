@@ -8,6 +8,14 @@ spring:
     port: 5672
     username: ${RABBITMQ_USER:guest}
     password: ${RABBITMQ_PASSWORD:guest}
+    # Ein abgestürzter chat-service soll binnen Sekunden auffallen: der Broker
+    # löscht dann seine exklusive Queue (Spezifikation 3, S4).
+    requested-heartbeat: 5s
+    listener:
+      simple:
+        # Höchstens 250 unbestätigte Nachrichten. Mit x-max-length 750 bleibt
+        # die Instanzqueue unter 1000 (Spezifikation 3, S6).
+        prefetch: 250
 
 server:
   port: 8080
