@@ -327,7 +327,15 @@ einziger Vorlage. Die Spalte «Messwert» der Spezifikation ist gefüllt.
 
 **Test:** die Abschluss-Prüfung unten.
 
-**Geprüft und korrigiert:** _(nach dem Schritt ausfüllen)_
+**Geprüft und korrigiert:** Zweimal vollständig in je einem frischen Klon gelaufen (13.11.2026, `.env` aus `.env.example`):
+`mvn clean test` 92 Tests grün, `verify-live-delivery.sh` S2 bis S7 `PASS`, `check-code-rules.sh` für `chat-service`
+und `batch-writer` `PASS`, `verify-batch-writer.sh` weiterhin `PASS`. Messwerte stehen in der Spezifikation, Abschnitt 5.
+Nichts schöngeredet: S4 und S5 zeigen wegen der Sekundengenauigkeit «0 bis 1 s». Nicht ausgeführt wurden die Befehle
+aus der README (Schritt 9) einzeln von Hand, nur dieselben Befehle im Skript. Ein `/code-review` über alle Änderungen
+fand 10 Punkte, die **nicht behoben** sind (unter anderem: blockierender Client unter dem Schloss, Ausnahmen in
+`deliver`, fehlende Warnung zum Löschen des Datenträgers in der README). Die Checkboxen der Abschluss-Prüfung bleiben
+unangetastet, weil der Plan ab dem Push nur im Feld «Geprüft und korrigiert» geändert werden darf. Tag und Push von
+`main` sind Sache der Abgabe.
 
 ---
 
