@@ -89,12 +89,12 @@ public class LiveDeliveryState {
      */
     public synchronized SubscribeResult subscribe(UUID roomId, UUID cursorId, SseEmitter emitter) {
         if (cursorId != null) {
-            boolean cursorKnown = replayBuffer.knowsCursor(cursorId, roomId);
-            if (!cursorKnown) {
+            List<BufferedMessage> missed = replayBuffer.messagesAfter(cursorId, roomId);
+            if (missed == null) {
                 log.info("Cursor {} unknown for room {}, subscription refused", cursorId, roomId);
                 return SubscribeResult.UNKNOWN_CURSOR;
             }
-            boolean replayed = replayMissedMessages(roomId, cursorId, emitter);
+            boolean replayed = replayMissedMessages(missed, emitter);
             if (!replayed) {
                 return SubscribeResult.REPLAY_FAILED;
             }
@@ -111,8 +111,7 @@ public class LiveDeliveryState {
     }
 
     /** Sendet die verpassten Nachrichten. Gibt false zurück, wenn der Client dabei wegbricht. */
-    private boolean replayMissedMessages(UUID roomId, UUID cursorId, SseEmitter emitter) {
-        List<BufferedMessage> missed = replayBuffer.messagesAfter(cursorId, roomId);
+    private boolean replayMissedMessages(List<BufferedMessage> missed, SseEmitter emitter) {
         for (BufferedMessage buffered : missed) {
             boolean sent = sendTo(emitter, buffered);
             if (!sent) {

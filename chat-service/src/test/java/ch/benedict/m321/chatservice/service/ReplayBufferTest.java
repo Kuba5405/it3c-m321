@@ -10,6 +10,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -150,21 +152,22 @@ class ReplayBufferTest {
         assertEquals(sameRoom, result.get(0));
     }
 
-    /** Ein Cursor aus dem Puffer und im richtigen Raum ist gültig. */
+    /** Ein gültiger Cursor ohne spätere Nachrichten ergibt eine leere Liste, nicht null: «nichts verpasst». */
     @Test
-    void knowsACursorInTheRequestedRoom() {
+    void newestCursorInTheRequestedRoomGivesAnEmptyList() {
         ReplayBuffer buffer = new ReplayBuffer();
         ChatMessage cursor = addMessageIn(buffer, ROOM_A);
         UUID cursorId = idOf(cursor);
 
-        boolean known = buffer.knowsCursor(cursorId, ROOM_A);
+        List<BufferedMessage> replayed = buffer.messagesAfter(cursorId, ROOM_A);
 
-        assertTrue(known);
+        assertNotNull(replayed);
+        assertTrue(replayed.isEmpty());
     }
 
-    /** Unbekannt, verdrängt und raumfremd sind alle «nicht gefunden» (Grundlage für 409). */
+    /** Unbekannt, verdrängt und raumfremd ergeben alle null, «nicht gefunden» (Grundlage für 409). */
     @Test
-    void doesNotKnowUnknownEvictedOrForeignRoomCursors() {
+    void messagesAfterIsNullForUnknownEvictedOrForeignRoomCursors() {
         ReplayBuffer buffer = new ReplayBuffer();
         ChatMessage evicted = addMessageIn(buffer, ROOM_A);
         for (int i = 0; i < ReplayBuffer.CAPACITY; i++) {
@@ -175,13 +178,13 @@ class ReplayBufferTest {
         UUID evictedId = idOf(evicted);
         UUID inRoomAId = idOf(inRoomA);
 
-        boolean unknown = buffer.knowsCursor(unknownId, ROOM_A);
-        boolean evictedKnown = buffer.knowsCursor(evictedId, ROOM_A);
-        boolean foreignRoom = buffer.knowsCursor(inRoomAId, ROOM_B);
+        List<BufferedMessage> unknown = buffer.messagesAfter(unknownId, ROOM_A);
+        List<BufferedMessage> evictedResult = buffer.messagesAfter(evictedId, ROOM_A);
+        List<BufferedMessage> foreignRoom = buffer.messagesAfter(inRoomAId, ROOM_B);
 
-        assertFalse(unknown);
-        assertFalse(evictedKnown);
-        assertFalse(foreignRoom);
+        assertNull(unknown);
+        assertNull(evictedResult);
+        assertNull(foreignRoom);
     }
 
     /**

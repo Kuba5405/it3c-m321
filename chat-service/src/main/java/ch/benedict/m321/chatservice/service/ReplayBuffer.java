@@ -97,28 +97,22 @@ public class ReplayBuffer {
     }
 
     /**
-     * Darf dieser Cursor für einen Replay benutzt werden? Er muss im Puffer
-     * liegen UND zum angefragten Raum gehören. Sonst antwortet der Endpunkt
-     * mit 409, statt eine Lücke still zu verschweigen (Spezifikation 4.6).
-     */
-    public boolean knowsCursor(UUID cursorId, UUID roomId) {
-        BufferedMessage cursor = messages.get(cursorId);
-        if (cursor == null) {
-            return false;
-        }
-        ChatMessage cursorMessage = cursor.message();
-        return cursorMessage.roomId().equals(roomId);
-    }
-
-    /**
      * Liefert alles, was NACH dem Cursor eintraf und zum selben Raum gehört,
      * in Empfangsreihenfolge. Der Cursor selbst ist nicht dabei: der Client
      * hat ihn ja schon.
      *
-     * Ist der Cursor unbekannt, kommt eine leere Liste. Wer den Unterschied
-     * zu «nichts verpasst» braucht, fragt vorher knowsCursor.
+     * Der Cursor muss im Puffer liegen UND zum angefragten Raum gehören. Sonst
+     * kommt null zurück, und der Endpunkt antwortet mit 409, statt eine Lücke
+     * still zu verschweigen (Spezifikation 4.6). Eine leere Liste heisst darum
+     * immer «nichts verpasst», nie «Cursor unbekannt».
+     *
+     * @return die verpassten Nachrichten, oder null bei unbekanntem oder raumfremdem Cursor
      */
     public List<BufferedMessage> messagesAfter(UUID cursorId, UUID roomId) {
+        boolean cursorUsable = isCursorInRoom(cursorId, roomId);
+        if (!cursorUsable) {
+            return null;
+        }
         List<BufferedMessage> result = new ArrayList<>();
         boolean cursorPassed = false;
         for (BufferedMessage buffered : messages.values()) {
@@ -131,5 +125,15 @@ public class ReplayBuffer {
             }
         }
         return result;
+    }
+
+    /** Liegt der Cursor im Puffer, und gehört er zum angefragten Raum? */
+    private boolean isCursorInRoom(UUID cursorId, UUID roomId) {
+        BufferedMessage cursor = messages.get(cursorId);
+        if (cursor == null) {
+            return false;
+        }
+        ChatMessage cursorMessage = cursor.message();
+        return cursorMessage.roomId().equals(roomId);
     }
 }
