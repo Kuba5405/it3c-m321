@@ -27,6 +27,14 @@ class ReplayBufferTest {
         return new ChatMessage(id, roomId, "anna", "Anna Muster", "Hallo", now);
     }
 
+    /** Baut eine Nachricht mit einem Inhalt der gewünschten Länge. */
+    private ChatMessage messageWithContentLength(UUID roomId, int length) {
+        UUID id = UUID.randomUUID();
+        Instant now = Instant.now();
+        String content = "x".repeat(length);
+        return new ChatMessage(id, roomId, "anna", "Anna Muster", content, now);
+    }
+
     /** Legt eine neue Nachricht in den Puffer und gibt sie zurück. */
     private ChatMessage addMessageIn(ReplayBuffer buffer, UUID roomId) {
         ChatMessage message = messageIn(roomId);
@@ -147,5 +155,60 @@ class ReplayBufferTest {
         assertFalse(unknown);
         assertFalse(evictedKnown);
         assertFalse(foreignRoom);
+    }
+
+    /**
+     * Der Puffer ist auch nach GRÖSSE begrenzt, nicht nur nach Anzahl: tausend
+     * Nachrichten zu je 500 KB würden sonst etwa 500 MB Heap belegen (Review).
+     * Drei Nachrichten zu je 8 Millionen Zeichen übersteigen die Grenze, die
+     * älteste muss weichen.
+     */
+    @Test
+    void dropsTheOldestMessagesWhenTheTotalSizeIsTooLarge() {
+        ReplayBuffer buffer = new ReplayBuffer();
+        ChatMessage oldest = messageWithContentLength(ROOM_A, 8_000_000);
+        ChatMessage second = messageWithContentLength(ROOM_A, 8_000_000);
+        ChatMessage newest = messageWithContentLength(ROOM_A, 8_000_000);
+
+        buffer.add(oldest);
+        buffer.add(second);
+        buffer.add(newest);
+
+        UUID oldestId = idOf(oldest);
+        UUID newestId = idOf(newest);
+        boolean oldestStillThere = buffer.contains(oldestId);
+        boolean newestThere = buffer.contains(newestId);
+        int size = buffer.size();
+        assertFalse(oldestStillThere);
+        assertTrue(newestThere);
+        assertEquals(2, size);
+    }
+
+    /** Auch eine einzelne, zu grosse Nachricht bleibt als neueste im Puffer, sonst wäre ihr Cursor sofort ungültig. */
+    @Test
+    void keepsTheNewestMessageEvenWhenItAloneIsTooLarge() {
+        ReplayBuffer buffer = new ReplayBuffer();
+        ChatMessage huge = messageWithContentLength(ROOM_A, ReplayBuffer.MAX_TOTAL_CHARACTERS + 1000);
+
+        buffer.add(huge);
+
+        UUID hugeId = idOf(huge);
+        boolean contained = buffer.contains(hugeId);
+        assertTrue(contained);
+    }
+
+    /** Nach dem Verdrängen zählt die Grösse richtig: kleine Nachrichten passen danach wieder hinein. */
+    @Test
+    void smallMessagesFitAgainAfterBigOnesAreEvicted() {
+        ReplayBuffer buffer = new ReplayBuffer();
+        buffer.add(messageWithContentLength(ROOM_A, 15_000_000));
+        buffer.add(messageWithContentLength(ROOM_A, 15_000_000));
+        for (int i = 0; i < 10; i++) {
+            addMessageIn(buffer, ROOM_A);
+        }
+
+        int size = buffer.size();
+
+        assertEquals(11, size);
     }
 }
