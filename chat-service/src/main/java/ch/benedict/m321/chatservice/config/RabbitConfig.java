@@ -8,6 +8,7 @@ import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -86,12 +87,18 @@ public class RabbitConfig {
                 .build();
     }
 
-    /** Hängt die Instanzqueue an den Zustellweg, sonst bekäme sie nie eine Kopie. */
+    /**
+     * Hängt die Instanzqueue an den Zustellweg, sonst bekäme sie nie eine Kopie.
+     *
+     * Spring übergibt die fertigen Beans als Parameter. Würden wir hier liveQueue()
+     * aufrufen, hinge es an einem Spring-Trick, dass dieselbe Queue zurückkommt und
+     * nicht eine zweite mit neuer UUID, die niemand liest. Mit Parametern sieht man
+     * direkt, welche Queue gebunden wird. @Qualifier wählt unter den drei Queues
+     * die richtige aus.
+     */
     @Bean
-    public Binding liveQueueBinding() {
-        Queue queue = liveQueue();
-        FanoutExchange exchange = deliveryExchange();
-        return BindingBuilder.bind(queue).to(exchange);
+    public Binding liveQueueBinding(@Qualifier("liveQueue") Queue liveQueue, FanoutExchange deliveryExchange) {
+        return BindingBuilder.bind(liveQueue).to(deliveryExchange);
     }
 
     /**
