@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -41,6 +42,18 @@ class StreamControllerIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    /** Liest ein Feld eines JSON-Objekts als Text, damit die Tests ohne verschachtelte Aufrufe auskommen. */
+    private String textOf(JsonNode data, String field) {
+        JsonNode node = data.get(field);
+        return node.asText();
+    }
+
+    /** Liest die n-te data:-Zeile eines Clients als JSON. */
+    private JsonNode dataOf(SseTestClient client, int index) throws Exception {
+        String line = client.dataLines.get(index);
+        return objectMapper.readTree(line);
+    }
 
     /** Schickt eine Nachricht wie das Gateway: POST /messages. */
     private void post(UUID roomId, String senderId, String content) throws Exception {
@@ -82,7 +95,9 @@ class StreamControllerIntegrationTest {
     /** Eine Last-Event-ID, die keine UUID ist, ebenso. */
     @Test
     void lastEventIdThatIsNotAUuidIsBadRequest() throws Exception {
-        int status = statusOf("roomId=" + UUID.randomUUID(), "kaputt");
+        UUID room = UUID.randomUUID();
+        String query = "roomId=" + room;
+        int status = statusOf(query, "kaputt");
 
         assertEquals(400, status);
     }
@@ -90,7 +105,11 @@ class StreamControllerIntegrationTest {
     /** Eine gültige, aber unbekannte Last-Event-ID ergibt 409: eine Lücke wird gemeldet, nicht verschwiegen. */
     @Test
     void unknownLastEventIdIsConflict() throws Exception {
-        int status = statusOf("roomId=" + UUID.randomUUID(), UUID.randomUUID().toString());
+        UUID room = UUID.randomUUID();
+        UUID unknownCursor = UUID.randomUUID();
+        String query = "roomId=" + room;
+        String cursorText = unknownCursor.toString();
+        int status = statusOf(query, cursorText);
 
         assertEquals(409, status);
     }
@@ -98,7 +117,9 @@ class StreamControllerIntegrationTest {
     /** Ohne Cursor: 200 und der richtige Content-Type. */
     @Test
     void connectionWithoutCursorIsOkAndAnEventStream() throws Exception {
-        SseTestClient client = SseTestClient.connect(port, "roomId=" + UUID.randomUUID(), null);
+        UUID room = UUID.randomUUID();
+        String query = "roomId=" + room;
+        SseTestClient client = SseTestClient.connect(port, query, null);
 
         assertEquals(200, client.status);
         assertTrue(client.contentType.startsWith("text/event-stream"), client.contentType);
@@ -114,15 +135,20 @@ class StreamControllerIntegrationTest {
         post(room, "anna", "Hallo");
         client.waitForEvents(1);
 
-        assertEquals(1, client.ids.size());
-        JsonNode data = objectMapper.readTree(client.dataLines.get(0));
-        assertEquals(client.ids.get(0), data.get("id").asText());
-        assertEquals(room.toString(), data.get("roomId").asText());
-        assertEquals("anna", data.get("senderId").asText());
-        assertEquals("Anna Muster", data.get("senderName").asText());
-        assertEquals("Hallo", data.get("content").asText());
-        assertTrue(data.get("sentAt").asText().endsWith("Z"), data.get("sentAt").asText());
-        assertEquals(6, data.size());
+        int eventCount = client.ids.size();
+        String eventId = client.ids.get(0);
+        JsonNode data = dataOf(client, 0);
+        String sentAt = textOf(data, "sentAt");
+        int fieldCount = data.size();
+        assertEquals(1, eventCount);
+        assertEquals(eventId, textOf(data, "id"));
+        String expectedRoom = room.toString();
+        assertEquals(expectedRoom, textOf(data, "roomId"));
+        assertEquals("anna", textOf(data, "senderId"));
+        assertEquals("Anna Muster", textOf(data, "senderName"));
+        assertEquals("Hallo", textOf(data, "content"));
+        assertTrue(sentAt.endsWith("Z"), sentAt);
+        assertEquals(6, fieldCount);
         client.close();
     }
 
@@ -141,8 +167,8 @@ class StreamControllerIntegrationTest {
 
         assertEquals(1, clientA.ids.size());
         assertEquals(1, clientB.ids.size());
-        JsonNode dataB = objectMapper.readTree(clientB.dataLines.get(0));
-        assertEquals("Kontrolle für B", dataB.get("content").asText());
+        JsonNode dataB = dataOf(clientB, 0);
+        assertEquals("Kontrolle für B", textOf(dataB, "content"));
         clientA.close();
         clientB.close();
     }
@@ -172,18 +198,22 @@ class StreamControllerIntegrationTest {
         List<String> contents = new ArrayList<>();
         for (String dataLine : second.dataLines) {
             JsonNode data = objectMapper.readTree(dataLine);
-            contents.add(data.get("content").asText());
+            String content = textOf(data, "content");
+            contents.add(content);
         }
         for (int i = 0; i < 50; i++) {
-            assertEquals("Nachricht " + (i + 1), contents.get(i));
+            String expectedContent = "Nachricht " + (i + 1);
+            String actualContent = contents.get(i);
+            assertEquals(expectedContent, actualContent);
         }
-        assertTrue(!second.ids.contains(cursor), "der Cursor selbst wird nicht wiederholt");
+        boolean cursorRepeated = second.ids.contains(cursor);
+        assertFalse(cursorRepeated, "der Cursor selbst wird nicht wiederholt");
 
         post(room, "anna", "live danach");
         second.waitForEvents(51);
         assertEquals(51, second.ids.size());
-        JsonNode last = objectMapper.readTree(second.dataLines.get(50));
-        assertEquals("live danach", last.get("content").asText());
+        JsonNode last = dataOf(second, 50);
+        assertEquals("live danach", textOf(last, "content"));
         second.close();
     }
 }

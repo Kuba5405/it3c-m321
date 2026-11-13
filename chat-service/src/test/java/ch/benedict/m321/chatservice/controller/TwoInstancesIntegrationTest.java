@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.core.env.Environment;
 import org.testcontainers.containers.RabbitMQContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -60,7 +61,8 @@ class TwoInstancesIntegrationTest {
 
     /** Liest den zufällig gewählten Port einer laufenden Instanz. */
     private static int portOf(ConfigurableApplicationContext context) {
-        String port = context.getEnvironment().getProperty("local.server.port");
+        Environment environment = context.getEnvironment();
+        String port = environment.getProperty("local.server.port");
         return Integer.parseInt(port);
     }
 
@@ -99,7 +101,9 @@ class TwoInstancesIntegrationTest {
         List<String> lines = new ArrayList<>(client.dataLines);
         for (String line : lines) {
             JsonNode data = objectMapper.readTree(line);
-            contents.add(data.get("content").asText());
+            JsonNode contentNode = data.get("content");
+            String content = contentNode.asText();
+            contents.add(content);
         }
         return contents;
     }
@@ -127,11 +131,16 @@ class TwoInstancesIntegrationTest {
         clientTwo.waitForEvents(40);
         clientB.waitForEvents(1);
 
-        assertBothSendersInOrderExactlyOnce(contentsOf(clientOne));
-        assertBothSendersInOrderExactlyOnce(contentsOf(clientTwo));
-        assertEquals(40, new HashSet<>(clientOne.ids).size());
-        assertEquals(40, new HashSet<>(clientTwo.ids).size());
-        assertEquals(List.of("control-b"), contentsOf(clientB));
+        List<String> contentsOne = contentsOf(clientOne);
+        List<String> contentsTwo = contentsOf(clientTwo);
+        List<String> contentsB = contentsOf(clientB);
+        Set<String> distinctIdsOne = new HashSet<>(clientOne.ids);
+        Set<String> distinctIdsTwo = new HashSet<>(clientTwo.ids);
+        assertBothSendersInOrderExactlyOnce(contentsOne);
+        assertBothSendersInOrderExactlyOnce(contentsTwo);
+        assertEquals(40, distinctIdsOne.size());
+        assertEquals(40, distinctIdsTwo.size());
+        assertEquals(List.of("control-b"), contentsB);
         clientOne.close();
         clientTwo.close();
         clientB.close();

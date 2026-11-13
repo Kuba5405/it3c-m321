@@ -1,6 +1,5 @@
 package ch.benedict.m321.chatservice.config;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.connection.CachingConnectionFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -63,17 +62,6 @@ class RabbitConfigIntegrationTest {
         Properties properties = rabbitAdmin.getQueueProperties(QueueNames.DEAD_LETTER_QUEUE);
 
         assertNotNull(properties);
-    }
-
-    /**
-     * Spring deklariert Queues erst, wenn die erste Verbindung zum Broker
-     * entsteht. Heute öffnet beim Start noch nichts eine Verbindung; erst der
-     * Listener in Schritt 4 tut das von selbst. Bis dahin holt initialize()
-     * die Deklaration nach, damit die Tests die Queue sehen.
-     */
-    @BeforeEach
-    void declareEverythingNow() {
-        rabbitAdmin.initialize();
     }
 
     /**
@@ -140,9 +128,10 @@ class RabbitConfigIntegrationTest {
         String line = findLiveQueueLine();
         assertNotNull(line);
 
-        assertTrue(line.contains("x-max-length"), line);
-        assertTrue(line.contains("750"), line);
-        assertTrue(line.contains("drop-head"), line);
+        // Der Name der Queue enthält eine UUID, die zufällig "750" enthalten kann.
+        // Darum wird der Wert samt Argumentname geprüft, nicht nur die Zahl.
+        assertTrue(line.contains("{\"x-max-length\",750}"), line);
+        assertTrue(line.contains("{\"x-overflow\",\"drop-head\"}"), line);
     }
 
     /** Die Queue hängt am Exchange, sonst bekäme sie nie eine Kopie. */
