@@ -101,6 +101,10 @@ data: {"id":"46998f49-…","roomId":"3f2b1c4e-…","senderId":"anna","senderName
 
 `id:` und `data:` gehören immer zur selben Nachricht.
 
+Direkt nach dem Öffnen schickt der Server **eine Kommentarzeile** (`: connected`). Sie hat weder `id:` noch
+`data:`. Ohne sie verschickt der Server die Antwortköpfe erst mit dem ersten Ereignis, und ein Client in einem
+ruhigen Raum bekäme nie sein `200` (gemessen im Test, Plan Schritt 5).
+
 | Anfrage | Antwort |
 |---|---|
 | `roomId` fehlt | **400** |

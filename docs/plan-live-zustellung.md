@@ -191,7 +191,14 @@ Emitter zu übergeben.
 
 **Test:** `StreamControllerIntegrationTest`. **Zuerst rot**, dann grün.
 
-**Geprüft und korrigiert:** _(nach dem Schritt ausfüllen)_
+**Geprüft und korrigiert:** Test lief zuerst rot (7 Fehler, 1 Error, überall `404`). Beim ersten Lauf mit dem
+Controller **hing** der Test «Verbindung ohne Cursor»: Der Server verschickt die Antwortköpfe erst mit dem ersten
+Ereignis, ein Client in einem ruhigen Raum bekam also nie ein `200`. **Das war ein Fehler im Vorschlag**, nicht im
+Test. Korrektur: der Controller schickt als Erstes die Kommentarzeile `: connected` (kein `id:`, kein `data:`, der
+Vertrag bleibt gleich). Dazu im Test-Client ein Zeitlimit von 10 s, damit ein Hänger künftig als Fehler endet. In
+der Spezifikation 2.2 nachgetragen. Danach alle 45 Tests des `chat-service` grün, darunter
+`reconnectDeliversExactlyTheMissedMessages`. Gelesen: 400 für fehlende oder ungültige `roomId` und ungültige
+`Last-Event-ID`, 409 für unbekannten Cursor, Zeitlimit 30 Minuten.
 
 ---
 
