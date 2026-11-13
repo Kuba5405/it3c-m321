@@ -414,3 +414,28 @@ Tests benutzten Methoden `contains` und `size` im `ReplayBuffer`, und der Text v
 **Änderungsgrund:** Der Review fand ein reales Verhalten des Zeitlimits (Tomcat) und ein unbegrenztes Speicherwachstum.
 Der `StalledClientIntegrationTest` wartet jetzt 30 statt 20 Sekunden, weil er einmal bei 29 von 30 Nachrichten knapp scheiterte.
 
+
+### Eintrag 3, 13.11.2026: Drittes Review (Codequalität)
+
+**Alter Text:** Eintrag 2 führt den fehlenden Test für `REPLAY_FAILED` unter «Nicht behoben (bewusst)». `liveQueueBinding()`
+ruft `liveQueue()` direkt auf, `knowsCursor` und `messagesAfter` sind zwei getrennte Aufrufe (Schritt 2: «Eine Eigenheit
+bewusst belassen»), und jede Nachricht wird live und bei jedem Replay erneut in JSON umgewandelt.
+
+**Neuer Text:** Ein drittes Review prüfte nur die Struktur des Codes. Vier Punkte wurden behoben, je in einem eigenen Commit:
+
+| Befund | Behoben | Commit |
+|---|---|---|
+| `liveQueueBinding()` bekam dieselbe Queue nur dank des Proxys von `@Configuration` (sonst eine zweite mit neuer UUID, die niemand liest) | Queue und Exchange kommen als Parameter, `@Qualifier("liveQueue")` | `refactor: Binding bekommt Queue und Exchange als Parameter` |
+| JSON bei jedem Replay neu erzeugt, Fall «Umwandlung gescheitert» an zwei Stellen | `BufferedMessage` (Nachricht und JSON) liegt im Puffer, das JSON entsteht einmal in `deliver()` | `refactor: JSON einmal erzeugen und mit der Nachricht puffern` |
+| Leere Liste aus `messagesAfter` hiess «nichts verpasst» oder «Cursor unbekannt» | `messagesAfter` gibt `null` bei unbekanntem oder raumfremdem Cursor, `knowsCursor` entfällt | `refactor: Cursor-Prüfung und Replay in einer Methode` |
+| `REPLAY_FAILED` ohne Test, im Controller stillschweigend wie `SUBSCRIBED` behandelt | Test `aClientThatFailsDuringReplayIsNotSubscribed`, Gegenprobe ohne die Abfrage rot. Kommentar im Controller | `test: REPLAY_FAILED prüfen und im Controller erklären` |
+
+**Nicht behoben (bewusst):** Das Zeitlimit für stehende Clients bleibt eine Tomcat-Einstellung für den ganzen Server
+(begründet in Eintrag 1 und 2, eine eigene Sende-Warteschlange pro Verbindung wäre deutlich mehr Mechanik). Die
+Kommentarzeile `: connected` bleibt vor `subscribe`: Spring dokumentiert, dass Sendungen vor der Rückgabe des Emitters
+zwischengespeichert werden, und der Vertrag (2.2) verlangt sie als Erstes. Die kopierte `post()`-Hilfsmethode bleibt wie in
+Eintrag 2.
+
+**Änderungsgrund:** `CLAUDE.md` verlangt «keine Magie» und Methoden, die man ohne versteckte Vorbedingung benutzen kann.
+Das Verhalten nach aussen ist unverändert, mit einer Ausnahme: Scheitert die JSON-Umwandlung, kommt die Nachricht nicht
+mehr in den Puffer (vorher lag sie dort, konnte aber nie gesendet werden).
