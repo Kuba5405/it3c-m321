@@ -39,7 +39,7 @@ public class ReplayBuffer {
      * trotzdem sofort. Ein einfacher Listen-Durchlauf wäre bei jeder
      * Dublettenprüfung langsam.
      */
-    private final Map<UUID, ChatMessage> messages = new LinkedHashMap<>();
+    private final Map<UUID, BufferedMessage> messages = new LinkedHashMap<>();
 
     /** Summe der Inhaltslängen aller Nachrichten im Puffer, wird beim Aufnehmen und Entfernen nachgeführt. */
     private long totalCharacters = 0;
@@ -49,14 +49,15 @@ public class ReplayBuffer {
      *
      * @return true bei einer neuen Nachricht, false bei einer, die schon da war
      */
-    public boolean add(ChatMessage message) {
+    public boolean add(BufferedMessage buffered) {
+        ChatMessage message = buffered.message();
         UUID id = message.id();
         boolean alreadyKnown = messages.containsKey(id);
         if (alreadyKnown) {
             return false;
         }
-        messages.put(id, message);
-        totalCharacters = totalCharacters + contentLengthOf(message);
+        messages.put(id, buffered);
+        totalCharacters = totalCharacters + contentLengthOf(buffered);
         removeOldestWhileTooBig();
         return true;
     }
@@ -70,13 +71,14 @@ public class ReplayBuffer {
         while (messages.size() > 1 && (messages.size() > CAPACITY || totalCharacters > MAX_TOTAL_CHARACTERS)) {
             Iterator<UUID> idsInOrder = messages.keySet().iterator();
             UUID oldestId = idsInOrder.next();
-            ChatMessage oldest = messages.remove(oldestId);
+            BufferedMessage oldest = messages.remove(oldestId);
             totalCharacters = totalCharacters - contentLengthOf(oldest);
         }
     }
 
     /** Die Länge des Inhalts einer Nachricht, null zählt als 0. */
-    private int contentLengthOf(ChatMessage message) {
+    private int contentLengthOf(BufferedMessage buffered) {
+        ChatMessage message = buffered.message();
         String content = message.content();
         if (content == null) {
             return 0;
@@ -100,11 +102,12 @@ public class ReplayBuffer {
      * mit 409, statt eine Lücke still zu verschweigen (Spezifikation 4.6).
      */
     public boolean knowsCursor(UUID cursorId, UUID roomId) {
-        ChatMessage cursor = messages.get(cursorId);
+        BufferedMessage cursor = messages.get(cursorId);
         if (cursor == null) {
             return false;
         }
-        return cursor.roomId().equals(roomId);
+        ChatMessage cursorMessage = cursor.message();
+        return cursorMessage.roomId().equals(roomId);
     }
 
     /**
@@ -115,12 +118,13 @@ public class ReplayBuffer {
      * Ist der Cursor unbekannt, kommt eine leere Liste. Wer den Unterschied
      * zu «nichts verpasst» braucht, fragt vorher knowsCursor.
      */
-    public List<ChatMessage> messagesAfter(UUID cursorId, UUID roomId) {
-        List<ChatMessage> result = new ArrayList<>();
+    public List<BufferedMessage> messagesAfter(UUID cursorId, UUID roomId) {
+        List<BufferedMessage> result = new ArrayList<>();
         boolean cursorPassed = false;
-        for (ChatMessage message : messages.values()) {
+        for (BufferedMessage buffered : messages.values()) {
+            ChatMessage message = buffered.message();
             if (cursorPassed && message.roomId().equals(roomId)) {
-                result.add(message);
+                result.add(buffered);
             }
             if (message.id().equals(cursorId)) {
                 cursorPassed = true;

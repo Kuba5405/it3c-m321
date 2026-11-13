@@ -4,6 +4,7 @@ import ch.benedict.m321.chatservice.dto.ChatMessage;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,11 +36,35 @@ class ReplayBufferTest {
         return new ChatMessage(id, roomId, "anna", "Anna Muster", content, now);
     }
 
+    /**
+     * Verpackt eine Nachricht so, wie sie im Puffer liegt. Das JSON spielt für den
+     * Puffer keine Rolle, darum genügt ein Platzhalter.
+     */
+    private BufferedMessage buffered(ChatMessage message) {
+        return new BufferedMessage(message, "{}");
+    }
+
+    /** Legt eine Nachricht in den Puffer und meldet, ob sie neu war. */
+    private boolean add(ReplayBuffer buffer, ChatMessage message) {
+        BufferedMessage buffered = buffered(message);
+        return buffer.add(buffered);
+    }
+
     /** Legt eine neue Nachricht in den Puffer und gibt sie zurück. */
     private ChatMessage addMessageIn(ReplayBuffer buffer, UUID roomId) {
         ChatMessage message = messageIn(roomId);
-        buffer.add(message);
+        add(buffer, message);
         return message;
+    }
+
+    /** Die Nachrichten aus dem Ergebnis eines Replays, ohne das JSON. */
+    private List<ChatMessage> messagesOf(List<BufferedMessage> bufferedMessages) {
+        List<ChatMessage> result = new ArrayList<>();
+        for (BufferedMessage bufferedMessage : bufferedMessages) {
+            ChatMessage message = bufferedMessage.message();
+            result.add(message);
+        }
+        return result;
     }
 
     /** Die ID einer Nachricht, damit Aufrufe nicht verschachtelt werden müssen. */
@@ -54,8 +79,8 @@ class ReplayBufferTest {
         ChatMessage message = messageIn(ROOM_A);
         UUID id = idOf(message);
 
-        boolean firstTime = buffer.add(message);
-        boolean secondTime = buffer.add(message);
+        boolean firstTime = add(buffer, message);
+        boolean secondTime = add(buffer, message);
         boolean contained = buffer.contains(id);
         int size = buffer.size();
 
@@ -101,8 +126,9 @@ class ReplayBufferTest {
         ChatMessage later2 = addMessageIn(buffer, ROOM_A);
         UUID cursorId = idOf(cursor);
 
-        List<ChatMessage> result = buffer.messagesAfter(cursorId, ROOM_A);
+        List<BufferedMessage> replayed = buffer.messagesAfter(cursorId, ROOM_A);
 
+        List<ChatMessage> result = messagesOf(replayed);
         assertEquals(2, result.size());
         assertEquals(later1, result.get(0));
         assertEquals(later2, result.get(1));
@@ -117,8 +143,9 @@ class ReplayBufferTest {
         ChatMessage sameRoom = addMessageIn(buffer, ROOM_A);
         UUID cursorId = idOf(cursor);
 
-        List<ChatMessage> result = buffer.messagesAfter(cursorId, ROOM_A);
+        List<BufferedMessage> replayed = buffer.messagesAfter(cursorId, ROOM_A);
 
+        List<ChatMessage> result = messagesOf(replayed);
         assertEquals(1, result.size());
         assertEquals(sameRoom, result.get(0));
     }
@@ -170,9 +197,9 @@ class ReplayBufferTest {
         ChatMessage second = messageWithContentLength(ROOM_A, 8_000_000);
         ChatMessage newest = messageWithContentLength(ROOM_A, 8_000_000);
 
-        buffer.add(oldest);
-        buffer.add(second);
-        buffer.add(newest);
+        add(buffer, oldest);
+        add(buffer, second);
+        add(buffer, newest);
 
         UUID oldestId = idOf(oldest);
         UUID newestId = idOf(newest);
@@ -190,7 +217,7 @@ class ReplayBufferTest {
         ReplayBuffer buffer = new ReplayBuffer();
         ChatMessage huge = messageWithContentLength(ROOM_A, ReplayBuffer.MAX_TOTAL_CHARACTERS + 1000);
 
-        buffer.add(huge);
+        add(buffer, huge);
 
         UUID hugeId = idOf(huge);
         boolean contained = buffer.contains(hugeId);
@@ -201,8 +228,10 @@ class ReplayBufferTest {
     @Test
     void smallMessagesFitAgainAfterBigOnesAreEvicted() {
         ReplayBuffer buffer = new ReplayBuffer();
-        buffer.add(messageWithContentLength(ROOM_A, 15_000_000));
-        buffer.add(messageWithContentLength(ROOM_A, 15_000_000));
+        ChatMessage big1 = messageWithContentLength(ROOM_A, 15_000_000);
+        ChatMessage big2 = messageWithContentLength(ROOM_A, 15_000_000);
+        add(buffer, big1);
+        add(buffer, big2);
         for (int i = 0; i < 10; i++) {
             addMessageIn(buffer, ROOM_A);
         }

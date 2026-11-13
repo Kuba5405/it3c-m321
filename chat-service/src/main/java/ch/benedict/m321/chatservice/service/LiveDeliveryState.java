@@ -46,12 +46,18 @@ public class LiveDeliveryState {
      * Nimmt eine Nachricht vom Broker entgegen und gibt sie an alle
      * Verbindungen desselben Raums weiter.
      *
-     * Reihenfolge mit Absicht: erst in den Puffer, dann senden. Scheitert das
-     * Senden an einem Client, kann dieser die Nachricht später nachholen.
-     * Das JSON wird EINMAL erzeugt und an alle gleich gesendet.
+     * Reihenfolge mit Absicht: erst das JSON, dann in den Puffer, dann senden.
+     * Das JSON entsteht EINMAL und liegt mit der Nachricht im Puffer, so senden
+     * Live-Zustellung und Replay denselben Text. Scheitert das Senden an einem
+     * Client, kann dieser die Nachricht später nachholen.
      */
     public synchronized void deliver(ChatMessage message) {
-        boolean isNew = replayBuffer.add(message);
+        String json = toJson(message);
+        if (json == null) {
+            return;
+        }
+        BufferedMessage buffered = new BufferedMessage(message, json);
+        boolean isNew = replayBuffer.add(buffered);
         if (!isNew) {
             log.debug("Message {} already known, not delivered again", message.id());
             return;
@@ -60,15 +66,13 @@ public class LiveDeliveryState {
         if (emittersInRoom == null) {
             return;
         }
-        String json = toJson(message);
-        if (json == null) {
-            return;
-        }
         // Eine Kopie, weil ein fehlgeschlagener Client aus der echten Liste entfernt wird.
         List<SseEmitter> snapshot = new ArrayList<>(emittersInRoom);
         for (SseEmitter emitter : snapshot) {
-            boolean sent = sendTo(emitter, message, json);
+            boolean sent = sendTo(emitter, buffered);
             if (!sent) {
+                // Sofort entfernen: die Callbacks aus registerCleanup kommen erst später,
+                // und bis dahin bekäme die tote Verbindung jede weitere Nachricht.
                 remove(message.roomId(), emitter);
             }
         }
@@ -108,13 +112,9 @@ public class LiveDeliveryState {
 
     /** Sendet die verpassten Nachrichten. Gibt false zurück, wenn der Client dabei wegbricht. */
     private boolean replayMissedMessages(UUID roomId, UUID cursorId, SseEmitter emitter) {
-        List<ChatMessage> missed = replayBuffer.messagesAfter(cursorId, roomId);
-        for (ChatMessage message : missed) {
-            String json = toJson(message);
-            if (json == null) {
-                continue;
-            }
-            boolean sent = sendTo(emitter, message, json);
+        List<BufferedMessage> missed = replayBuffer.messagesAfter(cursorId, roomId);
+        for (BufferedMessage buffered : missed) {
+            boolean sent = sendTo(emitter, buffered);
             if (!sent) {
                 return false;
             }
@@ -149,7 +149,8 @@ public class LiveDeliveryState {
     /**
      * Wandelt die Nachricht in das JSON um, das als data: hinausgeht.
      *
-     * @return das JSON, oder null, falls die Umwandlung scheitert (dann bleibt die Nachricht im Puffer)
+     * @return das JSON, oder null, falls die Umwandlung scheitert (dann wird die Nachricht verworfen:
+     *         sie kommt nicht in den Puffer und geht an niemanden)
      */
     private String toJson(ChatMessage message) {
         try {
@@ -168,8 +169,10 @@ public class LiveDeliveryState {
      *
      * @return true, wenn gesendet wurde, false bei einem Fehler
      */
-    private boolean sendTo(SseEmitter emitter, ChatMessage message, String json) {
+    private boolean sendTo(SseEmitter emitter, BufferedMessage buffered) {
+        ChatMessage message = buffered.message();
         String eventId = message.id().toString();
+        String json = buffered.json();
         SseEmitter.SseEventBuilder event = SseEmitter.event().id(eventId).data(json, MediaType.APPLICATION_JSON);
         try {
             emitter.send(event);
