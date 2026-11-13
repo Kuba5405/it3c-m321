@@ -16,56 +16,17 @@
 set -u
 cd "$(dirname "$0")/.."
 
-if [ ! -f .env ]; then
-    echo "Keine .env gefunden. Zuerst: cp .env.example .env"
-    exit 2
-fi
-set -a
-. ./.env
-set +a
+# Gemeinsame Hilfsfunktionen: pass, fail, report, wait_until, db, queue_messages, .env laden.
+. scripts/lib-verify.sh
 
-FAILURES=0
 ROOM_ID="3f2b1c4e-0000-0000-0000-000000000001"
 
 # ---------------------------------------------------------------- Hilfsfunktionen
-
-# Meldet ein bestandenes Szenario.
-pass() {
-    echo "PASS  $1  $2"
-}
-
-# Meldet ein nicht bestandenes Szenario und merkt es sich für den Exit-Code.
-fail() {
-    echo "FAIL  $1  $2"
-    FAILURES=$((FAILURES + 1))
-}
-
-# Meldet je nach Ergebnis des letzten Arguments PASS oder FAIL.
-# Aufruf: report S3 "Beschreibung" 0   (0 = bestanden)
-report() {
-    if [ "$3" -eq 0 ]; then
-        pass "$1" "$2"
-    else
-        fail "$1" "$2"
-    fi
-}
-
-# Führt eine SQL-Abfrage in der Datenbank aus und gibt das Ergebnis ohne Leerraum zurück.
-db() {
-    docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "$1" 2>/dev/null | tr -d '[:space:]'
-}
 
 # Zahl der Zeilen in der Tabelle, 0 wenn die Datenbank nicht antwortet.
 row_count() {
     local value
     value=$(db "SELECT count(*) FROM message")
-    echo "${value:-0}"
-}
-
-# Zahl der Nachrichten in einer Queue (bereite und unbestätigte), 0 wenn es sie nicht gibt.
-queue_messages() {
-    local value
-    value=$(docker compose exec -T rabbitmq rabbitmqctl list_queues name messages 2>/dev/null | awk -v queue="$1" '$1 == queue {print $2}')
     echo "${value:-0}"
 }
 
@@ -81,26 +42,6 @@ queue_consumers() {
 transaction_count() {
     sleep 2
     db "SELECT xact_commit FROM pg_stat_database WHERE datname = current_database()"
-}
-
-# Wartet höchstens N Sekunden, bis ein Befehl gelingt. Gibt 0 zurück, wenn er gelang.
-# Aufruf: wait_until 60 befehl argument ...
-wait_until() {
-    local limit=$1
-    shift
-    local start
-    start=$(date +%s)
-    while true; do
-        if "$@"; then
-            return 0
-        fi
-        local now
-        now=$(date +%s)
-        if [ $((now - start)) -ge "$limit" ]; then
-            return 1
-        fi
-        sleep 1
-    done
 }
 
 # Bedingung für wait_until: die Tabelle hat mindestens N Zeilen UND chat.persist ist leer.

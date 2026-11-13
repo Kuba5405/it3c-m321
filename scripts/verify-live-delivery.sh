@@ -20,71 +20,12 @@
 set -u
 cd "$(dirname "$0")/.."
 
-if [ ! -f .env ]; then
-    echo "Keine .env gefunden. Zuerst: cp .env.example .env"
-    exit 2
-fi
-set -a
-. ./.env
-set +a
+# Gemeinsame Hilfsfunktionen: pass, fail, report, wait_until, db, queue_messages, .env laden.
+. scripts/lib-verify.sh
 
-FAILURES=0
 CLIENT_PREFIX="live-verify"
 
 # ---------------------------------------------------------------- Hilfsfunktionen
-
-# Meldet ein bestandenes Szenario.
-pass() {
-    echo "PASS  $1  $2"
-}
-
-# Meldet ein nicht bestandenes Szenario und merkt es sich für den Exit-Code.
-fail() {
-    echo "FAIL  $1  $2"
-    FAILURES=$((FAILURES + 1))
-}
-
-# Meldet je nach Ergebnis des letzten Arguments PASS oder FAIL.
-# Aufruf: report S3 "Beschreibung" 0   (0 = bestanden)
-report() {
-    if [ "$3" -eq 0 ]; then
-        pass "$1" "$2"
-    else
-        fail "$1" "$2"
-    fi
-}
-
-# Wartet höchstens N Sekunden, bis ein Befehl gelingt. Gibt 0 zurück, wenn er gelang.
-# Aufruf: wait_until 60 befehl argument ...
-wait_until() {
-    local limit=$1
-    shift
-    local start
-    start=$(date +%s)
-    while true; do
-        if "$@"; then
-            return 0
-        fi
-        local now
-        now=$(date +%s)
-        if [ $((now - start)) -ge "$limit" ]; then
-            return 1
-        fi
-        sleep 1
-    done
-}
-
-# Führt eine SQL-Abfrage in der Datenbank aus und gibt das Ergebnis ohne Leerraum zurück.
-db() {
-    docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "$1" 2>/dev/null | tr -d '[:space:]'
-}
-
-# Zahl der Nachrichten in einer festen Queue (bereite und unbestätigte), 0 wenn es sie nicht gibt.
-queue_messages() {
-    local value
-    value=$(docker compose exec -T rabbitmq rabbitmqctl list_queues name messages 2>/dev/null | awk -v queue="$1" '$1 == queue {print $2}')
-    echo "${value:-0}"
-}
 
 # Gibt es die Queue überhaupt? (0 = ja)
 queue_exists() {
