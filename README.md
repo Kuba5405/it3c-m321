@@ -60,11 +60,33 @@ scripts/check-code-rules.sh      # Szenario S8: Regeln aus CLAUDE.md im Quelltex
 
 Das erste Skript löscht den Stack samt Datenträger und baut ihn neu auf. Es lässt ihn am Ende laufen.
 
+### Live-Zustellung: Nachrichten sofort anzeigen (SSE)
+
+Der `chat-service` stellt jede angenommene Nachricht per Server-Sent Events an alle Clients zu, die
+gerade im selben Raum verbunden sind. Jede Instanz hat dafür eine **eigene** Queue am Exchange
+`chat.delivery`. Der Endpunkt ist nur im Docker-Netz erreichbar. Ein Client im Raum öffnen:
+
+```bash
+docker run --rm --network chat-net curlimages/curl -sN -H 'Accept: text/event-stream' \
+  "http://chat-service:8080/stream?roomId=3f2b1c4e-0000-0000-0000-000000000001"
+```
+
+In einem zweiten Terminal die Nachricht von oben senden: sie erscheint sofort im ersten. Mit zwei
+Instanzen (`docker compose up -d --scale chat-service=2`) erreicht eine Nachricht beide Clients, egal
+an welcher Instanz sie angenommen wurde. Verbindet ein Client nach einem Abbruch mit dem Header
+`Last-Event-ID`, holt er nach, was er verpasst hat. Alles Weitere steht in
+[`docs/spec-live-zustellung.md`](docs/spec-live-zustellung.md).
+
+```bash
+scripts/verify-live-delivery.sh   # Szenarien S2 bis S7 der Live-Zustellung (dauert einige Minuten)
+scripts/check-code-rules.sh chat-service   # Szenario S8 für den chat-service
+```
+
 ## Was gebaut wird
 
 | Baustein | Technologie | Aufgabe | Stand |
 |---|---|---|---|
-| chat-service | Spring Boot 3, Java 21 | Nimmt Nachrichten per `POST /messages` an, legt sie auf Queue und Fanout-Exchange | vorhanden |
+| chat-service | Spring Boot 3, Java 21 | Nimmt Nachrichten per `POST /messages` an, legt sie auf Queue und Fanout-Exchange und stellt sie per SSE (`GET /stream`) an die verbundenen Clients zu | vorhanden |
 | rabbitmq | RabbitMQ 3.13 | Message Queue zwischen den Services | vorhanden |
 | batch-writer | Spring Boot 3, Java 21 | Holt Nachrichten aus `chat.persist` und schreibt sie stapelweise (500 oder 200 ms) in PostgreSQL. Einziger Schreiber | vorhanden |
 | postgres | PostgreSQL 16 | Speichert den Chat-Verlauf, Tabelle `message` | vorhanden |
@@ -88,6 +110,10 @@ erreichbar.
   gemessenen Randfälle.
 - [`docs/plan-batch-writer.md`](docs/plan-batch-writer.md) — Umsetzungsplan des `batch-writer`, in
   der Reihenfolge, in der er gebaut wurde (siehe `git log`).
+- [`docs/spec-live-zustellung.md`](docs/spec-live-zustellung.md) — Spezifikation der Live-Zustellung:
+  Vertrag, Queues, Verhalten in jedem Fall, Entscheidungen, Abnahmekriterien.
+- [`docs/plan-live-zustellung.md`](docs/plan-live-zustellung.md) — Umsetzungsplan der Live-Zustellung,
+  Schritt für Schritt, mit den Aufträgen an die KI und dem, was ich daran geprüft und geändert habe.
 - [`CLAUDE.md`](CLAUDE.md) — Codestil-Regeln für dieses Projekt. Gelten auch für dich.
 - [`docs/flipchart-chat-app.png`](docs/flipchart-chat-app.png) — das Flipchart aus der Lektion,
   von dem die Planung ausgeht.
