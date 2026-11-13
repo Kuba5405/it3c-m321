@@ -82,6 +82,12 @@ scripts/verify-live-delivery.sh   # Szenarien S2 bis S7 der Live-Zustellung (dau
 scripts/check-code-rules.sh chat-service   # Szenario S8 für den chat-service
 ```
 
+**Achtung:** `scripts/verify-live-delivery.sh` löscht zuerst den ganzen Stack samt Datenträger
+(`docker compose down -v`). **Alle gespeicherten Nachrichten gehen verloren.** Das gilt wie beim
+`batch-writer`-Skript. Beide Skripte teilen ihre Hilfsfunktionen in `scripts/lib-verify.sh`.
+`scripts/check-code-rules.sh` ohne Argument prüft den `batch-writer` streng, mit `chat-service`
+gilt die Regel aus dem Auftrag, und `--strict` erzwingt die strenge Regel für jeden Ordner.
+
 ## Was gebaut wird
 
 | Baustein | Technologie | Aufgabe | Stand |
