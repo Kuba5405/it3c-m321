@@ -19,6 +19,12 @@ spring:
 
 server:
   port: 8080
+  tomcat:
+    # Ein Client, der nie liest, würde beim Senden sonst ohne Ende blockieren und
+    # die Zustellung an alle anderen Clients der Instanz anhalten. Nach 5 Sekunden
+    # bricht Tomcat das Schreiben ab, die Verbindung wird entfernt (gemessen am
+    # 13.11.2026: ohne diese Zeile hing der gesunde Client über 40 s fest).
+    connection-timeout: 5s
 
 logging:
   level:
