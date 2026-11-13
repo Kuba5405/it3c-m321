@@ -366,3 +366,30 @@ unangetastet, weil der Plan ab dem Push nur im Feld «Geprüft und korrigiert» 
 
 Leer. Ab dem ersten Push steht hier jede Änderung mit **Datum, altem Text, neuem Text und Änderungsgrund**, je in
 einem eigenen Commit.
+
+### Eintrag 1, 13.11.2026: Review-Befunde nach Schritt 10
+
+**Alter Text:** Schritte 1 bis 10 enthalten keine Schritte für Nacharbeiten. Die Spezifikation (7, Punkt 1) führte den
+blockierenden Client als «bewusst nicht gelöst» und nannte ihn «bekannte Grenze».
+
+**Neuer Text:** Nach Schritt 10 lief ein Code-Review über alle Änderungen (10 Befunde). Alle zehn wurden behoben,
+je als eigener Commit, jeweils mit Test:
+
+| Befund | Behoben | Commit |
+|---|---|---|
+| Client, der nie liest, hält die Zustellung auf | `server.tomcat.connection-timeout: 5s`, vorher gemessen: ohne die Zeile hing der gesunde Client über 40 s, mit 3 s kam alles nach 3 s an. Test `StalledClientIntegrationTest` | `fix: Client, der nie liest, nach 5 Sekunden abbrechen` |
+| Ein `RuntimeException` beim Senden brach `deliver()` ab | `sendTo` fängt `IOException \| RuntimeException`. Test `aRuntimeExceptionOnOneConnectionDoesNotStopTheOthers` | `fix: Laufzeitfehler beim Senden stoppt nur eine Verbindung, Ergebnistyp, JSON einmal` |
+| `subscribe()` gab bei gescheitertem Replay `true` zurück | `SubscribeResult` mit drei Fällen | derselbe Commit |
+| JSON pro Client neu erzeugt, jede Nachricht lief durch alle Verbindungen | JSON einmal, eine Liste pro Raum | derselbe Commit |
+| Veralteter `initialize()`-Aufruf und Kommentar im Test | entfernt | `test: Verschachtelte Aufrufe auflösen, Queue-Grenze genau prüfen, Altlast entfernen` |
+| `contains("750")` konnte die UUID treffen | prüft `{"x-max-length",750}` samt Argumentname | derselbe Commit |
+| Verschachtelte Aufrufe in Tests | in Variablen aufgelöst | derselbe Commit |
+| README warnt nicht vor dem Löschen des Datenträgers | Warnung ergänzt, README-Befehl einmal von Hand ausgeführt | `docs: README warnt, dass das Abnahmeskript den Datenträger löscht` |
+| Hilfsfunktionen in beiden Skripten kopiert | `scripts/lib-verify.sh` | `refactor: Gemeinsame Hilfsfunktionen der Abnahmeskripte in lib-verify.sh` |
+| Regelprüfung wählt die Regel nach Ordnername | `--strict` ausdrücklich, Lambda-Filter strenger | `refactor: Regelprüfung wählt die strenge Regel mit --strict statt nach Ordnername` |
+
+**Änderungsgrund:** Das Review hat echte Fehler gefunden (Befunde 1 und 2), und die Anforderungen aus `CLAUDE.md`
+(keine verschachtelten Aufrufe, keine Kopien) waren nicht eingehalten. Der strengere Lambda-Filter fand beim Beheben
+ausserdem ein weiteres, von mir selbst eingebautes Lambda (`computeIfAbsent`), das ersetzt wurde. Die Grenze 5 s
+bleibt eine Obergrenze: ein stehender Client hält die anderen einmalig bis zu 5 s auf, danach wird er entfernt.
+
