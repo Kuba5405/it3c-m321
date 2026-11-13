@@ -95,7 +95,11 @@ public class LiveDeliveryState {
                 return SubscribeResult.REPLAY_FAILED;
             }
         }
-        List<SseEmitter> emittersInRoom = emittersByRoom.computeIfAbsent(roomId, room -> new ArrayList<>());
+        List<SseEmitter> emittersInRoom = emittersByRoom.get(roomId);
+        if (emittersInRoom == null) {
+            emittersInRoom = new ArrayList<>();
+            emittersByRoom.put(roomId, emittersInRoom);
+        }
         emittersInRoom.add(emitter);
         registerCleanup(roomId, emitter);
         log.info("Connection subscribed to room {}, {} open in this room", roomId, emittersInRoom.size());
