@@ -279,7 +279,13 @@ immer gleich aus.
 
 **Test:** Skript gegen den laufenden Stack, und einmal gegen einen absichtlich kaputten (ohne `x-max-length`): S6 muss rot werden.
 
-**Geprüft und korrigiert:** _(nach dem Schritt ausfüllen)_
+**Geprüft und korrigiert:** Lauf gegen den richtigen Stand: S2 bis S7 `PASS`. Gegen einen absichtlich kaputten Stand
+(Queue ohne `x-max-length`, danach zurückgesetzt): **nur S6 rot** («Tiefe=5000, erlaubt 1000»), alle anderen weiter
+grün. Das zeigt, dass das Skript S6 wirklich misst. Ein Fehler im Vorschlag der KI fiel beim Lesen auf, noch vor dem
+Lauf: ein Test, der kein Limit erreicht, würde bestehen, ohne etwas zu beweisen. Darum verlangt S6 zusätzlich
+`bereit` von mindestens 100. Gelesen und geprüft: Messung von S6 in den ersten 8 Sekunden (Heartbeat, Spezifikation
+4.5), je Zielinstanz eine eigene IP, ein Absender pro Instanz in S3. Bekannte Grenze: die Zeitmessung in S5 hat
+Sekundengenauigkeit.
 
 ---
 
@@ -299,7 +305,10 @@ erreichbar ist und wie man ihn prüft.
 
 **Test:** Die Befehle im README laufen unverändert.
 
-**Geprüft und korrigiert:** _(nach dem Schritt ausfüllen)_
+**Geprüft und korrigiert:** Die Befehle im README sind dieselben, die das Skript benutzt (curl im Netz `chat-net`,
+`docker compose up -d --scale chat-service=2`, `scripts/verify-live-delivery.sh`). `.env.example` blieb unverändert:
+der Code braucht keine neue Variable (Spezifikation 3.2). Die Zeile `chat-service` der Tabelle «Stand» bleibt
+«vorhanden» und nennt jetzt SSE. Spezifikation und Plan stehen in der Dokumentenliste.
 
 ---
 
